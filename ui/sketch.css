@@ -1,0 +1,135 @@
+/* sketch.css — サウンドスケッチ。色は hub.css の変数（テーマ）だけを使う */
+.sk { position: relative; display: grid; height: 100%; min-height: 0; }
+.sk-main { display: flex; flex-direction: column; min-height: 0; height: 100%; }
+.sk-main > .sk-body { flex: 1; }
+.sk-main[hidden], .sk-empty[hidden] { display: none; }
+.sk-grow { flex: 1; }
+.sk-sep { width: 1px; height: 20px; background: var(--line); margin: 0 2px; }
+
+/* 見出し */
+.sk-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 12px 10px; border-bottom: 1px solid var(--line); }
+.sk-head .select { min-width: 0; }
+.sk-file .select { max-width: 190px; }
+.sk-file .select-value { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sk-f { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 600; letter-spacing: .1em; color: var(--faint); }
+.sk-bpm { width: 64px; height: 30px; text-align: right; font: 13px var(--font-num); font-variant-numeric: tabular-nums; }
+.sk-mode.seg.seg-sm { width: 168px; }
+.sk-mode[hidden] { display: none; }
+.sk-head .btn, .sk-foot .btn { display: inline-flex; align-items: center; gap: 6px; }
+.sk-head .btn .icon, .sk-foot .btn .icon { width: 14px; height: 14px; }
+.sk-rec.on { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 50%, transparent); }
+.sk-rec .icon { color: var(--faint); }
+.sk-rec.on .icon { color: var(--danger); animation: sk-blink 1s steps(2, start) infinite; }
+@keyframes sk-blink { 50% { opacity: .35; } }
+.sk-ime { font-size: 11.5px; color: var(--danger); }
+.sk-warn { margin: 8px 12px 0; padding: 8px 10px; border-radius: var(--r); background: var(--ink-2); color: var(--danger); font-size: 12px; }
+
+/* 本体: 左にパート名と音量、右に Canvas */
+.sk-body { display: grid; grid-template-columns: 176px minmax(0, 1fr); gap: 10px; padding: 10px 12px 6px; overflow: auto; min-height: 0; }
+.sk-labels { position: relative; }
+.sk-lab { position: absolute; left: 0; right: 0; box-sizing: border-box; display: grid; align-content: start; gap: 4px; padding: 5px 8px; border-radius: 6px; }
+.sk-lab-top { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.sk-lab.sel { background: var(--ink-2); }
+.sk-lab-name {
+  display: flex; align-items: center; gap: 6px; padding: 0; border: 0; background: none; color: var(--muted);
+  font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; text-align: left;
+}
+.sk-lab.sel .sk-lab-name { color: var(--text); }
+.sk kbd {
+  display: inline-block; min-width: 16px; padding: 0 4px; border-radius: 4px; background: var(--ink-3); color: var(--faint);
+  font: 10px var(--font-num); text-align: center; line-height: 16px;
+}
+.sk-lab-ctl { display: flex; align-items: center; gap: 6px; }
+.sk-mute {
+  width: 22px; height: 18px; padding: 0; border: 1px solid var(--line); border-radius: 4px; background: transparent;
+  color: var(--faint); font: 600 10px var(--font-num); cursor: pointer;
+}
+.sk-mute[aria-pressed="true"] { background: var(--danger); border-color: var(--danger); color: #fff; }
+.sk-vol { flex: 1; width: 0; min-width: 0; height: 14px; margin: 0; accent-color: var(--signal); }
+.sk-lab-oct { font: 10.5px var(--font-num); color: var(--faint); }
+.sk-drum-names { display: grid; grid-template-rows: repeat(4, 1fr); position: absolute; top: 0; right: 8px; height: 100%; box-sizing: border-box; padding: 2px 0; }
+.sk-drum-names span { display: flex; align-items: center; justify-content: flex-end; gap: 4px; font-size: 10.5px; color: var(--faint); }
+.sk-lab[data-p="drums"] .sk-lab-top, .sk-lab[data-p="drums"] .sk-lab-ctl { width: 78px; }
+.sk-roll { position: relative; min-width: 0; }
+.sk-cv { display: block; width: 100%; cursor: pointer; touch-action: none; }
+
+/* 下の帯 */
+/* 右下はパネルの大きさを変えるつまみ（Hub 共通）の場所なので空けておく */
+.sk-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 28px 10px 12px; border-top: 1px solid var(--line); }
+.sk-hint { flex: 1; min-width: 0; font-size: 11.5px; color: var(--faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* 保存先がまだ無いとき */
+.sk-empty { display: grid; place-items: center; padding: 24px; }
+.sk-drop {
+  display: grid; justify-items: center; gap: 10px; max-width: 420px; padding: 28px 24px; border: 1.5px dashed var(--line);
+  border-radius: var(--r-l); text-align: center;
+}
+.sk-drop .icon { width: 28px; height: 28px; color: var(--faint); }
+.sk-drop-t { margin: 0; font-size: 14px; font-weight: 600; }
+.sk-drop-n { margin: 0; font-size: 12px; line-height: 1.6; color: var(--muted); }
+
+/* キーの割り当て（パネルの上に重ねる。背景は不透明） */
+.sk-keys { position: absolute; inset: 0; z-index: 5; overflow: auto; background: var(--solid-2, var(--ink-2)); }
+.sk-keys[hidden] { display: none; }
+.sk-keys-in { display: grid; gap: 14px; padding: 12px 14px 18px; }
+.sk-keys-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.sk-keys-head h2 { margin: 0; font-size: 14px; }
+.sk-keys-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; }
+.sk-keys-grid h3 { margin: 0 0 6px; font-size: 11px; font-weight: 600; letter-spacing: .14em; color: var(--faint); }
+.sk-krow { display: flex; align-items: center; justify-content: space-between; gap: 10px; height: 32px; font-size: 12.5px; }
+.sk-kbtn {
+  min-width: 84px; height: 28px; padding: 0 10px; border: 1px solid var(--line); border-radius: var(--r); background: var(--ink-3);
+  color: var(--text); font: 12px var(--font-num); cursor: pointer;
+}
+.sk-kbtn:hover { border-color: var(--faint); }
+.sk-kbtn.wait { border-color: var(--signal); color: var(--signal); }
+
+@media (prefers-reduced-motion: reduce) { .sk-rec.on .icon { animation: none; } }
+.sk-plabel { font-size: 11px; font-weight: 600; letter-spacing: .1em; color: var(--faint); }
+
+/* 鍵盤・パッド */
+.sk-pad { display: grid; gap: 6px; padding: 8px 12px 10px; border-top: 1px solid var(--line); }
+.sk-pad-head { display: flex; align-items: center; gap: 10px; }
+.sk-pad-title { font-size: 11px; font-weight: 600; letter-spacing: .1em; color: var(--muted); }
+.sk-pad-mods { display: flex; gap: 6px; }
+.sk-chip { display: inline-flex; align-items: center; gap: 4px; height: 20px; padding: 0 7px 0 3px; border-radius: 10px; background: var(--ink-2); color: var(--faint); font-size: 11px; }
+.sk-chip[data-on="true"] { background: var(--ink-4); color: var(--text); box-shadow: inset 0 0 0 1px var(--signal); }
+.sk-pad-keys { display: grid; gap: 6px; }
+.sk-pad-keys.chords { grid-template-columns: repeat(7, 1fr); max-width: 640px; }
+.sk-pad-keys.kb { position: relative; grid-template-columns: repeat(7, 1fr); gap: 4px; max-width: 560px; }
+.sk-pad-keys.drums { grid-template-columns: repeat(4, 1fr); max-width: 448px; }
+.sk-cap {
+  display: grid; justify-items: center; align-content: center; gap: 2px; height: 52px; padding: 6px 4px; border: 0; border-radius: var(--r);
+  background: var(--ink-2); box-shadow: inset 0 0 0 1px var(--line), 0 2px 0 var(--well); color: var(--text); cursor: pointer;
+  font: inherit; touch-action: none; user-select: none;
+}
+.sk-cap:hover { background: var(--ink-3); }
+.sk-cap b { font: 600 14px var(--font-num); letter-spacing: .02em; }
+.sk-cap small { font: 10.5px var(--font-num); color: var(--muted); min-height: 12px; }
+.sk-cap small:empty { display: none; }
+/* 白鍵・黒鍵（ミニ鍵盤） */
+.sk-cap.sk-white { height: 96px; align-content: end; padding-bottom: 8px; border-radius: 4px 4px var(--r) var(--r); }
+.sk-cap.sk-white:not(.in-key) b { color: var(--muted); }
+.sk-cap.sk-white.in-key::after { content: ""; width: 4px; height: 4px; border-radius: 50%; background: var(--signal); }
+.sk-black {
+  position: absolute; top: 0; z-index: 2; display: grid; justify-items: center; align-content: end; gap: 3px; width: 32px; height: 58px;
+  padding: 0 0 6px; border: 0; border-radius: 0 0 6px 6px; background: var(--solid-3, #22252D);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .08), 0 3px 6px rgba(0, 0, 0, .45); color: var(--muted); cursor: pointer; touch-action: none;
+}
+.sk-black[hidden] { display: none; }
+.sk-black b { display: none; }
+.sk-black kbd { min-width: 0; padding: 0 3px; background: rgba(255, 255, 255, .08); color: var(--muted); font-size: 9.5px; line-height: 14px; }
+.sk-black small { font: 600 10px var(--font-num); }
+.sk-black.in-key small { color: var(--text); }
+.sk-black.in-key::before { content: ""; width: 4px; height: 4px; margin-bottom: 3px; border-radius: 50%; background: var(--signal); }
+.sk-black:hover { background: var(--ink-4); }
+.sk-black.on { background: linear-gradient(135deg, rgb(var(--c1-rgb)), rgb(var(--c2-rgb)) 55%, rgb(var(--c3-rgb))); color: #fff; }
+.sk-rhythm[hidden] { display: none; }
+.sk-cap.on {
+  background: linear-gradient(135deg, rgba(var(--c1-rgb), .55), rgba(var(--c2-rgb), .55) 55%, rgba(var(--c3-rgb), .55));
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .18); transform: translateY(1px);
+}
+@media (prefers-reduced-motion: reduce) { .sk-cap.on { transform: none; } }
+.sk-cap.on kbd { background: rgba(0, 0, 0, .28); color: var(--text); }
+.sk-pad-rec { margin-left: auto; font-size: 11px; color: var(--faint); }
+.sk-pad-rec.on { color: var(--danger); }

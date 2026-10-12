@@ -1,0 +1,32 @@
+{
+  "id": "sketch",
+  "name": "サウンドスケッチ",
+  "version": "0.4.1",
+  "summary": "リズム・ベース・コード・メロディを数小節だけ作り、WAV にして AI（Suno など）に渡す。キーボードで叩いて入力できる",
+  "kind": "panel",
+  "runtime": "python",
+  "api": "api.py",
+  "visibility": "public",
+  "requires": { "hub": ">=0.7", "moduleApi": 1 },
+  "hub": {
+    "window": "panel",
+    "size": [920, 770],
+    "ui": "ui/panel.js",
+    "tile": { "icon": "pianoKeys" },
+    "blob": "blob_path"
+  },
+  "exports": [
+    { "fn": "state", "summary": "保存先・スケッチの一覧・numpy の有無" },
+    { "fn": "set_folder", "summary": "保存先フォルダを決める" },
+    { "fn": "open_sketch", "summary": "スケッチを開く" },
+    { "fn": "new_sketch", "summary": "新しいスケッチを作る" },
+    { "fn": "save_sketch", "summary": "スケッチを保存する" },
+    { "fn": "poll", "summary": "外で書き換えられたか（更新時刻）" },
+    { "fn": "export_wav", "summary": "WAV に書き出す（上書きしない）" },
+    { "fn": "keymap_get", "summary": "キーの割り当て" },
+    { "fn": "keymap_set", "summary": "キーの割り当てを保存" },
+    { "fn": "keymap_export", "summary": "キーの割り当てを保存先フォルダに書き出す" },
+    { "fn": "keymap_import", "summary": "キーの割り当てを保存先フォルダから読み込む" }
+  ],
+  "locales": { "en": { "name": "Sound Sketch", "summary": "Sketch a few bars of drums, bass, chords and melody from the keyboard, then export a WAV for AI tools such as Suno" } }
+}
