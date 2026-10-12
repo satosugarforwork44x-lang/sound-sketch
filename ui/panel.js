@@ -28,7 +28,7 @@ const L = EN ? {
   warn: "Some parts were skipped",
   padDrums: "Drum pads", padPiano: (p) => `Piano — ${p}`, sharpChip: "♯", sharpChord: "7th",
   stepRec: "Rec (stopped): keys write at the cursor and move it on", liveRec: "Rec: notes are written while playing", noRec: "Press R (record) to write what you play",
-  triads: "Chords", sevenths: "7th chords", clickTip: "Click a key to put it at the cursor (▼)", rhythm: "Rhythm presets", rhythmSet: (n) => `Set “${n}” (Ctrl+Z to undo)`, del: "Delete", placeChord: "Pick a chord for this spot",
+  triads: "Chords", sevenths: "7th chords", clearPart: (p) => `Clear ${p}`, cleared: (p) => `Cleared ${p} (Ctrl+Z to undo)`, clickTip: "Click a key to put it at the cursor (▼)", rhythm: "Rhythm presets", rhythmSet: (n) => `Set “${n}” (Ctrl+Z to undo)`, del: "Delete", placeChord: "Pick a chord for this spot",
 } : {
   dropFolder: "スケッチの保存先にするフォルダを、ここに落としてください",
   dropNote: "おすすめ: フォルダ窓のフォルダ（例: registries\\Sketch）を使い、Hub の設定で Claude に「読み書き」で共有すると、Claude がスケッチを直せます。",
@@ -51,7 +51,7 @@ const L = EN ? {
   warn: "読み飛ばした所があります",
   padDrums: "ドラムパッド", padPiano: (p) => `ピアノ — ${p}`, sharpChip: "♯（半音上げ）", sharpChord: "7th",
   stepRec: "録音待機（停止中）: 押した音がカーソルの位置に入り、カーソルが進みます", liveRec: "録音中: 再生しながら押した音が入ります", noRec: "R（録音）を押すと、弾いた音が入ります",
-  triads: "コード", sevenths: "7th のコード", clickTip: "クリックすると、カーソル（▼）の位置に入ります", rhythm: "リズムのプリセット", rhythmSet: (n) => `「${n}」にしました（Ctrl+Z で戻せます）`, del: "消す", placeChord: "ここに置くコードを選んでください",
+  triads: "コード", sevenths: "7th のコード", clearPart: (p) => `${p}を全部消す`, cleared: (p) => `${p}を消しました（Ctrl+Z で戻せます）`, clickTip: "クリックすると、カーソル（▼）の位置に入ります", rhythm: "リズムのプリセット", rhythmSet: (n) => `「${n}」にしました（Ctrl+Z で戻せます）`, del: "消す", placeChord: "ここに置くコードを選んでください",
 };
 
 const PARTS = ["drums", "bass", "chords", "melody"];
@@ -73,8 +73,7 @@ const RHYTHMS = [
   { ja: "ファンク", en: "Funk", kick: "x..x..x...x.....", snare: "....x..x.x..x...", hat: "xxxxxxxxxxxxxxxx" },
   { ja: "空にする", en: "Clear", kick: "", snare: "", hat: "", clap: "" },
 ];
-const LANE = { head: 18, drums: 84, chords: 44, bass: 96, melody: 120, gap: 10 };
-const PITCH_SPAN = 25;                       // ピアノロールに出す音の数（2 オクターブ + 1）
+const LANE = { head: 18, drums: 84, chords: 44, bass: 120, melody: 150, gap: 10 };   // bass / melody は窓の高さに合わせて伸ばす
 const svg = (d) => `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
 const IC = {
   play: svg('<path d="M7 5v14l11-7z" fill="currentColor"/>'), stop: svg('<rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor"/>'),
@@ -82,6 +81,7 @@ const IC = {
   keys: svg('<rect x="2.5" y="6" width="19" height="12" rx="2.5"/><path d="M6.5 10h.01M10 10h.01M13.5 10h.01M17 10h.01M8 14h8"/>'),
   folder: svg('<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>'),
   wave: svg('<path d="M3 12h2l2-6 3 12 3-9 2 6 2-3h4"/>'),
+  trash: svg('<path d="M4 7h16M10 11v6M14 11v6"/><path d="M6 7l1 13h10l1-13M9 7V4h6v3"/>'),
 };
 
 export async function mount(el, ctx) {
@@ -299,13 +299,13 @@ export async function mount(el, ctx) {
     updatePad(); draw();
     if (h.part !== part) return;
     if (!playing && (rec || h.mouse)) return stepInput(h);     // 止まっているとき: マウスで押した音は、そのままカーソルの位置に入る
-    if (!rec || !playing) return;
+    if (!rec && !h.mouse) return;                               // 再生中: 録音中か、マウスで押した音だけ入れる
     const s = steps();
     let len = position() - h.startPos;
     if (len < 0) len += s;
-    if (h.chord) {             // コードは拍（4 ステップ）にそろえる
-      const at = (Math.round(h.startPos / 4) * 4) % s;
-      const ln = Math.min(Math.max(4, Math.round(len / 4) * 4), s - at);
+    if (h.chord) {             // コードは半小節（8 マス）にそろえる
+      const at = (Math.round(h.startPos / 8) * 8) % s;
+      const ln = Math.min(Math.max(8, Math.round(len / 8) * 8), s - at);
       placeChord(at, ln, h.chord);
     } else {
       const at = Math.round(h.startPos) % s;
@@ -318,10 +318,9 @@ export async function mount(el, ctx) {
   function stepInput(h) {
     const s = steps();
     if (h.chord) {
-      const at = Math.floor(cursor / 4) * 4;
-      const end = Math.min(s, (Math.floor(at / 16) + 1) * 16);          // その小節の終わりまで
-      placeChord(at, end - at, h.chord);
-      cursor = end % s;
+      const { at, ln } = chordSlot(cursor);
+      placeChord(at, ln, h.chord);
+      cursor = (at + ln) % s;
     } else {
       const at = cursor, ln = Math.min(2, s - at);
       changed(() => { sk[h.part].push({ at, note: midiName(h.midi), len: ln }); sk[h.part].sort((a, b) => a.at - b.at); });
@@ -487,7 +486,9 @@ export async function mount(el, ctx) {
     buildLabels();
     const cv = $(".sk-cv");
     cv.addEventListener("pointerdown", onCanvas);
-    new ResizeObserver(() => draw()).observe($(".sk-roll"));
+    cv.addEventListener("contextmenu", eraseAt);
+    new ResizeObserver(() => { if (layoutLanes()) { buildLabels(); updateParts(); } else draw(); }).observe($(".sk-body"));
+    layoutLanes();
     updateHead(); updateTransport(); updateParts(); updateHint(); buildPad();
     ctx.setTitle(name);
     draw();
@@ -516,13 +517,19 @@ export async function mount(el, ctx) {
       row.style.top = `${laneTop(p)}px`;
       row.style.height = `${LANE[p]}px`;
       row.innerHTML = `<div class="sk-lab-top"><button type="button" class="sk-lab-name"><span></span><kbd></kbd></button><span class="sk-lab-oct"></span></div>
-        <div class="sk-lab-ctl"><button type="button" class="sk-mute" aria-pressed="false">M</button><input type="range" class="sk-vol" min="0" max="1" step="0.05"></div>`;
+        <div class="sk-lab-ctl"><button type="button" class="sk-mute" aria-pressed="false">M</button><input type="range" class="sk-vol" min="0" max="1" step="0.05"><button type="button" class="sk-clear">${IC.trash}</button></div>`;
       row.querySelector(".sk-lab-name span").textContent = L.parts[p];
       row.querySelector("kbd").textContent = keyLabel(hintKey[p]);
       row.querySelector(".sk-lab-name").addEventListener("click", () => selectPart(p));
       const mute = row.querySelector(".sk-mute");
       mute.title = L.mute;
       mute.addEventListener("click", () => changed(() => { sk.mix[p].mute = !sk.mix[p].mute; }) || updateParts());
+      const clr = row.querySelector(".sk-clear");
+      clr.title = L.clearPart(L.parts[p]);
+      clr.addEventListener("click", () => {
+        changed(() => { if (p === "drums") for (const d of DRUMS) sk.drums[d] = ".".repeat(steps()); else sk[p] = []; });
+        ctx.toast(L.cleared(L.parts[p]));
+      });
       const v = row.querySelector(".sk-vol");
       v.value = sk.mix[p].vol;
       v.addEventListener("input", () => { sk.mix[p].vol = Number(v.value); });
@@ -680,9 +687,27 @@ export async function mount(el, ctx) {
     const w = main.querySelector(".sk-roll").clientWidth;
     return { cv, w, h: totalH(), sw: w / steps() };
   }
-  function pitchRange(p) {   // ベースは 1 オクターブ下から見せる（低い音が多いため）
-    const lo = 12 * (BASE_OCT[p] + octOff[p] + 1) + KEYS.indexOf(sk.key) - (p === "bass" ? 12 : 0);
-    return { lo, hi: lo + PITCH_SPAN - 1 };
+  // ピアノロールに出す音の範囲。鍵盤の今のオクターブ（ベースは 1 つ下から）2 オクターブ分を基本に、
+  // 置いてある音符がはみ出すときは広げる（下の音が隠れないように）。C から B までのオクターブ単位、最大 4 オクターブ
+  function pitchRange(p) {
+    const base = 12 * (BASE_OCT[p] + octOff[p] + 1) - (p === "bass" ? 12 : 0);
+    let lo = base, hi = base + 24;
+    for (const n of sk[p]) { const m = noteMidi(n.note); if (m < lo) lo = m; if (m > hi) hi = m; }
+    lo -= ((lo % 12) + 12) % 12;
+    hi += 11 - (((hi % 12) + 12) % 12);
+    if (hi - lo + 1 > 48) hi = lo + 47;
+    return { lo, hi, span: hi - lo + 1 };
+  }
+  // 窓の高さに合わせて、ベースとメロディの行を広げる（押しやすく・消しやすく）
+  function layoutLanes() {
+    const body = main.querySelector(".sk-body");
+    if (!body) return false;
+    const fixed = LANE.head + LANE.drums + LANE.chords + LANE.gap * 3 + 8;
+    const rest = Math.max(216, body.clientHeight - 16 - fixed);
+    const bass = Math.round(rest * 0.45), melody = rest - bass;
+    if (bass === LANE.bass && melody === LANE.melody) return false;
+    LANE.bass = bass; LANE.melody = melody;
+    return true;
   }
   function draw() {
     if (!sk || main.hidden) return;
@@ -708,14 +733,16 @@ export async function mount(el, ctx) {
       g.fillStyle = p === part ? c.ink3 : c.ink2;
       roundRect(g, 0, y, w, lh, 6); g.fill();
       if (p === "bass" || p === "melody") {          // 調の中の音の行を少し明るく
-        const { lo } = pitchRange(p), rh = lh / PITCH_SPAN;
+        const { lo, span } = pitchRange(p), rh = lh / span;
         g.fillStyle = c.ink4;
         g.globalAlpha = 0.45;
-        for (let i = 0; i < PITCH_SPAN; i++) if (inScale(lo + i, sk.key, sk.scale)) g.fillRect(0, y + lh - (i + 1) * rh, w, rh - 0.5);
+        for (let i = 0; i < span; i++) if (inScale(lo + i, sk.key, sk.scale)) g.fillRect(0, y + lh - (i + 1) * rh, w, rh - 0.5);
         g.globalAlpha = 1;
         g.globalAlpha = 0.5;
-        for (let i = 0; i < PITCH_SPAN; i += 12) { g.fillStyle = c.line; g.fillRect(0, y + lh - (i + 1) * rh + rh - 1, w, 1); }
+        for (let i = 0; i < span; i += 12) { g.fillStyle = c.line; g.fillRect(0, y + lh - (i + 1) * rh + rh - 1, w, 1); }
         g.globalAlpha = 1;
+        g.fillStyle = c.faint; g.font = "10px system-ui, sans-serif";      // オクターブの目印（C2, C3 …）
+        for (let i = 0; i < span; i += 12) g.fillText(`C${Math.floor((lo + i) / 12) - 1}`, w - 22, y + lh - i * rh - 2);
       }
       for (let s = 0; s <= S; s += 4) {
         g.fillStyle = s % 16 === 0 ? c.faint : c.line;
@@ -744,10 +771,10 @@ export async function mount(el, ctx) {
     }
     // ベース・メロディ
     for (const p of ["bass", "melody"]) {
-      const y = laneTop(p), lh = LANE[p], { lo, hi } = pitchRange(p), ph = lh / PITCH_SPAN;
+      const y = laneTop(p), lh = LANE[p], { lo, hi, span } = pitchRange(p), ph = lh / span;
       for (const n of sk[p]) {
         const m = noteMidi(n.note);
-        const i = Math.max(0, Math.min(PITCH_SPAN - 1, m - lo));
+        const i = Math.max(0, Math.min(span - 1, m - lo));
         g.fillStyle = grad(m < lo || m > hi ? 0.35 : 0.9);
         roundRect(g, n.at * sw + 1, y + lh - (i + 1) * ph, Math.max(3, n.len * sw - 2), Math.max(3, ph), 2); g.fill();
       }
@@ -762,9 +789,9 @@ export async function mount(el, ctx) {
         const x = (playing ? now : cursor) * sw;
         g.fillStyle = c.text; g.font = "600 13px system-ui, sans-serif"; g.fillText(h.chord, x + 8, y + LANE.chords / 2 + 5);
       } else if (h.midi != null && (h.part === "bass" || h.part === "melody")) {
-        const y = laneTop(h.part), lh = LANE[h.part], { lo } = pitchRange(h.part), ph = lh / PITCH_SPAN;
+        const y = laneTop(h.part), lh = LANE[h.part], { lo, span } = pitchRange(h.part), ph = lh / span;
         const i = h.midi - lo;
-        if (i >= 0 && i < PITCH_SPAN) {
+        if (i >= 0 && i < span) {
           g.fillStyle = grad(0.45); g.fillRect(0, y + lh - (i + 1) * ph, w, ph);
           g.fillStyle = c.text; g.font = "600 11px system-ui, sans-serif";
           g.fillText(showName(h.midi), 4, Math.max(y + 11, y + lh - (i + 1) * ph - 2));
@@ -781,10 +808,10 @@ export async function mount(el, ctx) {
       g.strokeStyle = "rgba(255,255,255,.85)"; g.lineWidth = 1.5;
       for (const ch of sk.chords) if (now >= ch.at && now < ch.at + ch.len) { roundRect(g, ch.at * sw + 1, cy + 6, ch.len * sw - 2, LANE.chords - 12, 5); g.stroke(); }
       for (const p of ["bass", "melody"]) {
-        const y = laneTop(p), lh = LANE[p], { lo } = pitchRange(p), ph = lh / PITCH_SPAN;
+        const y = laneTop(p), lh = LANE[p], { lo, span } = pitchRange(p), ph = lh / span;
         for (const n of sk[p]) {
           if (now < n.at || now >= n.at + n.len) continue;
-          const i = Math.max(0, Math.min(PITCH_SPAN - 1, noteMidi(n.note) - lo));
+          const i = Math.max(0, Math.min(span - 1, noteMidi(n.note) - lo));
           roundRect(g, n.at * sw + 1, y + lh - (i + 1) * ph, Math.max(3, n.len * sw - 2), Math.max(3, ph), 2); g.stroke();
         }
       }
@@ -827,11 +854,13 @@ export async function mount(el, ctx) {
         changed(() => { const a = sk.drums[d].split(""); a[s] = a[s] === "." ? (e.shiftKey ? "X" : "x") : "."; sk.drums[d] = a.join(""); });
         audio(); if (sk.drums[d][s] !== ".") sound(drumKey(d), ac.currentTime, null, drumGain(sk.drums[d][s]));
       } else if (p === "chords") {
-        chordMenu(s, e.clientX, e.clientY);
+        // Hub のメニューは、前に開いたメニューの「外を押したら閉じる」がこの pointerdown の後で動くことがある。
+        // 同じ操作の中で開くとすぐ閉じられてしまうので、一拍おいてから開く
+        const cx = e.clientX, cy = e.clientY;
+        setTimeout(() => chordMenu(s, cx, cy), 0);
       } else {
-        const { lo } = pitchRange(p), ph = lh / PITCH_SPAN;
-        const midi = lo + Math.floor((top + lh - y) / ph);
-        const hit = sk[p].findIndex((n) => s >= n.at && s < n.at + n.len && noteMidi(n.note) === midi);
+        const midi = midiAt(p, y);
+        const hit = noteAt(p, s, midi);
         if (hit >= 0) changed(() => sk[p].splice(hit, 1));
         else {
           changed(() => { sk[p].push({ at: s, note: midiName(midi), len: Math.min(2, steps() - s) }); sk[p].sort((a, b) => a.at - b.at); });
@@ -842,17 +871,52 @@ export async function mount(el, ctx) {
     }
   }
 
+  function midiAt(p, y) {
+    const top = laneTop(p), lh = LANE[p], { lo, span } = pitchRange(p);
+    return lo + Math.max(0, Math.min(span - 1, Math.floor((top + lh - y) / (lh / span))));
+  }
+  // その位置の音符（上下 1 行のずれまでは当たりにする。細い音符でも消しやすく）
+  function noteAt(p, s, midi) {
+    let best = -1, dist = 2;
+    sk[p].forEach((n, i) => {
+      const d = Math.abs(noteMidi(n.note) - midi);
+      if (s >= n.at && s < n.at + n.len && d < dist) { best = i; dist = d; }
+    });
+    return best;
+  }
+  // 右クリックで消す（ドラムのマス・音符・コード）
+  function eraseAt(e) {
+    e.preventDefault();
+    const { sw } = geom();
+    const r = e.currentTarget.getBoundingClientRect();
+    const x = e.clientX - r.left, y = e.clientY - r.top, s = Math.floor(x / sw);
+    if (s < 0 || s >= steps()) return;
+    for (const p of PARTS) {
+      const top = laneTop(p), lh = LANE[p];
+      if (y < top || y >= top + lh) continue;
+      if (p === "drums") {
+        const d = DRUMS[Math.min(3, Math.floor((y - top) / (lh / 4)))];
+        if (sk.drums[d][s] !== ".") changed(() => { const a = sk.drums[d].split(""); a[s] = "."; sk.drums[d] = a.join(""); });
+      } else if (p === "chords") {
+        const hit = sk.chords.find((c) => s >= c.at && s < c.at + c.len);
+        if (hit) changed(() => { sk.chords = sk.chords.filter((c) => c !== hit); });
+      } else {
+        const hit = noteAt(p, s, midiAt(p, y));
+        if (hit >= 0) changed(() => sk[p].splice(hit, 1));
+      }
+      return;
+    }
+  }
+  // コードは半小節（8 マス）単位。小節の前半に置くと、後半にコードが無ければ小節の終わりまで伸ばす
+  function chordSlot(s) {
+    const at = Math.floor(s / 8) * 8;
+    const half2 = at % 16 === 8 || sk.chords.some((c) => c.at === at + 8);
+    return { at, ln: Math.min(half2 ? 8 : 16, steps() - at) };
+  }
   // コードの行を押したとき: その調のコードから選ぶ（置いてあるコードなら差し替え・消す）
   function chordMenu(s, x, y) {
     const hit = sk.chords.find((c) => s >= c.at && s < c.at + c.len);
-    let at, ln;
-    if (hit) { at = hit.at; ln = hit.len; }
-    else {
-      at = Math.floor(s / 4) * 4;
-      const barEnd = (Math.floor(at / 16) + 1) * 16;
-      const next = sk.chords.filter((c) => c.at > at).reduce((m, c) => Math.min(m, c.at), Infinity);
-      ln = Math.min(barEnd, next, steps()) - at;
-    }
+    const { at, ln } = chordSlot(s);
     cursor = at;
     const pick = (name) => () => {
       placeChord(at, ln, name);

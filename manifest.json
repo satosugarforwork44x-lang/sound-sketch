@@ -1,7 +1,7 @@
 {
   "id": "sketch",
   "name": "サウンドスケッチ",
-  "version": "0.4.1",
+  "version": "0.5.0",
   "summary": "リズム・ベース・コード・メロディを数小節だけ作り、WAV にして AI（Suno など）に渡す。キーボードで叩いて入力できる",
   "kind": "panel",
   "runtime": "python",

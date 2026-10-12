@@ -49,7 +49,7 @@
 .sk-lab-oct { font: 10.5px var(--font-num); color: var(--faint); }
 .sk-drum-names { display: grid; grid-template-rows: repeat(4, 1fr); position: absolute; top: 0; right: 8px; height: 100%; box-sizing: border-box; padding: 2px 0; }
 .sk-drum-names span { display: flex; align-items: center; justify-content: flex-end; gap: 4px; font-size: 10.5px; color: var(--faint); }
-.sk-lab[data-p="drums"] .sk-lab-top, .sk-lab[data-p="drums"] .sk-lab-ctl { width: 78px; }
+.sk-lab[data-p="drums"] .sk-lab-top, .sk-lab[data-p="drums"] .sk-lab-ctl { width: 94px; }
 .sk-roll { position: relative; min-width: 0; }
 .sk-cv { display: block; width: 100%; cursor: pointer; touch-action: none; }
 
@@ -133,3 +133,6 @@
 .sk-cap.on kbd { background: rgba(0, 0, 0, .28); color: var(--text); }
 .sk-pad-rec { margin-left: auto; font-size: 11px; color: var(--faint); }
 .sk-pad-rec.on { color: var(--danger); }
+.sk-clear { display: grid; place-items: center; width: 22px; height: 18px; padding: 0; border: 0; border-radius: 4px; background: transparent; color: var(--faint); cursor: pointer; }
+.sk-clear:hover { color: var(--danger); background: var(--ink-3); }
+.sk-clear .icon { width: 13px; height: 13px; }

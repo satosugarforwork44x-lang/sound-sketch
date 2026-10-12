@@ -40,6 +40,8 @@ The layout went through several rounds of real use. The table shows what was cho
 | **Two ways to record** | While playing with **R**: what you tap snaps to the 16th-note grid. While stopped: each note goes to the cursor (▼) and the cursor moves on — like typing |
 | **"5 in key" mode** | Every key plays a note of the pentatonic scale, so nothing sounds wrong. Good for a first idea |
 | **Rhythm presets** | 8-beat, 16-beat, four on the floor, rock, hip-hop, ballad, reggae, bossa nova, funk. Start from a groove, then edit |
+| **Chords snap to half bars** | One chord per bar is the most common, two per bar the next. Clicking the first half of a bar fills the whole bar; clicking the second half splits it. No more chords stuck on the 4th beat |
+| **Easy to erase** | Right-click deletes a cell, note or chord. Notes are hit even if you miss by one row. The 🗑 next to each part clears it. Lanes grow with the window, so rows are easier to hit |
 | **You can always see what is playing** | The row of the note you press glows; during playback, sounding notes and chords are outlined |
 | **Nothing is lost** | `Ctrl+Z` undo. WAV export never overwrites (`name (2).wav`). Edits made outside (by Claude) are picked up automatically |
 | **Remappable keys** | Keys are stored by physical position (`KeyboardEvent.code`), so JIS and US keyboards behave the same. A numpad preset is included |
