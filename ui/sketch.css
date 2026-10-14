@@ -141,3 +141,55 @@
 .sk-ref-file .select { height: 22px; max-width: 104px; padding: 0 4px 0 8px; font-size: 11px; }
 .sk-ref-file .select-value { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sk-lab-ctl button:disabled, .sk-lab-ctl input:disabled { opacity: .35; cursor: default; }
+
+/* 音を作る（録った音を楽器にする） */
+.sk-voice {
+  display: inline-flex; align-items: center; gap: 5px; height: 22px; margin-left: auto; padding: 0 9px 0 7px; border: 1px solid var(--line);
+  border-radius: 11px; background: transparent; color: var(--muted); font: inherit; font-size: 11px; cursor: pointer; white-space: nowrap;
+}
+.sk-voice .icon { width: 13px; height: 13px; }
+.sk-voice:hover { color: var(--text); border-color: var(--faint); }
+.sk-voice.on { color: var(--text); box-shadow: inset 0 0 0 1px var(--signal); border-color: transparent; }
+.sk-pad-rec + .sk-voice { margin-left: 8px; }
+.sk-smp .sk-keys-head .icon { width: 16px; height: 16px; }
+.sk-smp-lead { margin: -4px 0 0; font-size: 12.5px; line-height: 1.6; color: var(--muted); }
+.sk-smp-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 10px; }
+.sk-step { display: grid; gap: 8px; align-content: start; padding: 12px 14px; border-radius: var(--r-l); background: var(--ink-2); box-shadow: inset 0 0 0 1px var(--line); }
+.sk-step-wide { grid-column: 1 / -1; }
+.sk-step h3 { display: flex; align-items: center; gap: 6px; margin: 0; font-size: 12.5px; font-weight: 600; color: var(--text); white-space: pre; }
+.sk-step.done h3::after { content: "✓"; color: var(--signal); font-size: 12px; }
+.sk-step.off > :not(h3) { opacity: .45; }
+.sk-step-n { margin: 0; font-size: 11.5px; line-height: 1.55; color: var(--faint); }
+.sk-step-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-height: 30px; }
+.sk-step .btn { display: inline-flex; align-items: center; gap: 6px; }
+.sk-step .btn .icon { width: 14px; height: 14px; }
+.sk-s-rec .icon { color: var(--danger); }
+.sk-s-rec.on { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 50%, transparent); }
+.sk-s-rec.on .icon { animation: sk-blink 1s steps(2, start) infinite; }
+.sk-s-nstat, .sk-s-sec { font-size: 11.5px; color: var(--faint); font-variant-numeric: tabular-nums; }
+.sk-s-nstat.ok { color: var(--muted); }
+.sk-s-from { margin: 0; font-size: 11.5px; color: var(--faint); }
+.sk-s-from:empty { display: none; }
+.sk-s-from.warn { color: var(--danger); }
+.sk-meter { position: relative; flex: 1; min-width: 80px; max-width: 220px; height: 6px; border-radius: 3px; background: var(--ink-3); overflow: hidden; }
+.sk-meter i { position: absolute; inset: 0 auto 0 0; width: 0; border-radius: 3px; background: linear-gradient(90deg, rgb(var(--c1-rgb)), rgb(var(--c3-rgb))); transition: width .08s linear; }
+.sk-s-wave { display: block; width: 100%; height: 72px; border-radius: var(--r); }
+.sk-tog {
+  height: 26px; padding: 0 10px; border: 1px solid var(--line); border-radius: 13px; background: transparent; color: var(--faint);
+  font: inherit; font-size: 11.5px; cursor: pointer;
+}
+.sk-tog[aria-pressed="true"] { background: var(--ink-4); border-color: transparent; color: var(--text); box-shadow: inset 0 0 0 1px var(--signal); }
+.sk-tog:disabled { opacity: .4; cursor: default; }
+.sk-s-len { width: 180px; accent-color: var(--signal); }
+.sk-s-lenv { min-width: 48px; font: 11.5px var(--font-num); color: var(--muted); }
+.sk-s-root { min-width: 44px; text-align: center; font: 600 15px var(--font-num); }
+.sk-s-pitch .icon-btn { width: 26px; height: 26px; font-size: 14px; }
+.sk-link { padding: 0 2px; border: 0; background: none; color: var(--faint); font: inherit; font-size: 11.5px; cursor: pointer; text-decoration: underline dotted; text-underline-offset: 3px; }
+.sk-link:hover, .sk-link.on { color: var(--muted); }
+.sk-link[hidden] { display: none; }
+.sk-s-name { width: 160px; height: 30px; }
+.sk-smp-cur h3 { margin: 4px 0 6px; font-size: 11px; font-weight: 600; letter-spacing: .14em; color: var(--faint); }
+.sk-smp-slots { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); column-gap: 18px; }
+.sk-smp-slots .select { min-width: 120px; max-width: 150px; }
+.sk-smp-slots .select-value { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (prefers-reduced-motion: reduce) { .sk-s-rec.on .icon { animation: none; } .sk-meter i { transition: none; } }

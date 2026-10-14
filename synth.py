@@ -164,6 +164,39 @@ def chord_midis(name: str, octave: int = 3) -> list[int]:
     return [base + iv for iv in CHORD_IV[m.group(3)]]
 
 
+# ---------- 録った音（サンプル）を楽器として鳴らす ----------
+SLOTS = DRUMS + ("bass", "chords", "melody")
+SAMPLE_GAIN = {"bass": 0.6, "chords": 0.35, "melody": 0.5, "kick": 1.0, "snare": 1.0, "hat": 1.0, "clap": 1.0}
+MAX_SHIFT = 36                              # 半音で ±3 オクターブまで
+
+
+def fold_shift(shift: int) -> int:
+    """遠すぎる高さはオクターブ単位で近づける（それ以上は音が崩れるだけなので）。"""
+    while shift > MAX_SHIFT:
+        shift -= 12
+    while shift < -MAX_SHIFT:
+        shift += 12
+    return shift
+
+
+def sample_voice(x: np.ndarray, slot: str, shift: int = 0, sec: float | None = None) -> np.ndarray:
+    """録った音を shift 半音ずらして鳴らす（昔のサンプラーと同じく、速さを変えて高さを変える）。
+    sec があれば、その長さで切って RELEASE でフェード（シンセの音と同じ扱い）。"""
+    shift = fold_shift(int(shift))
+    if shift and len(x) > 1:
+        ratio = 2 ** (shift / 12)
+        t = np.arange(int(len(x) / ratio)) * ratio
+        x = np.interp(t, np.arange(len(x)), x)
+    y = np.asarray(x, dtype=np.float64) * SAMPLE_GAIN[slot]
+    if sec is not None:
+        cut = int(SR * max(0.03, sec))
+        if len(y) > cut:
+            n = min(len(y), cut + int(SR * RELEASE))
+            y = y[:n].copy()
+            y[cut:] *= np.linspace(1, 0, n - cut)
+    return y
+
+
 # ---------- ミックス・書き出し ----------
 # ---------- 参考の音（録音などの WAV） ----------
 def _pcm_to_float(raw: bytes, width: int, channels: int) -> np.ndarray:
@@ -219,9 +252,11 @@ def read_wav_mono(path: Path) -> np.ndarray:
     return x
 
 
-def render(sketch: dict, repeat: int = 1, ref: np.ndarray | None = None) -> np.ndarray:
+def render(sketch: dict, repeat: int = 1, ref: np.ndarray | None = None, samples: dict | None = None) -> np.ndarray:
     """正規化済みのスケッチ（api.normalize の結果）を、1 本の波形にする。
-    ref（参考の音を SR の 1ch にしたもの）があれば、スケッチの頭から offset 秒の所を、繰り返しごとに重ねる。"""
+    ref（参考の音を SR の 1ch にしたもの）があれば、スケッチの頭から offset 秒の所を、繰り返しごとに重ねる。
+    samples = {枠: (録った音, 元の高さの MIDI)}。枠（kick … / bass / chords / melody）は、内蔵の音の代わりにそれで鳴らす。"""
+    samples = samples or {}
     steps = 16 * sketch["bars"]
     step_sec = 60.0 / sketch["bpm"] / 4
     total = steps * step_sec * repeat
@@ -236,11 +271,20 @@ def render(sketch: dict, repeat: int = 1, ref: np.ndarray | None = None) -> np.n
 
     cache: dict = {}
 
-    def vcache(kind: str, midi: int, steps_len: int) -> np.ndarray:  # 繰り返しでは同じ音を作り直さない
-        k = (kind, midi, steps_len)
+    def vcache(part: str, kind: str, midi: int, steps_len: int) -> np.ndarray:  # 繰り返しでは同じ音を作り直さない
+        k = (part, midi, steps_len)
         if k not in cache:
-            cache[k] = voice(kind, midi, steps_len * step_sec)
+            if part in samples:
+                x, root = samples[part]
+                cache[k] = sample_voice(x, part, midi - root, steps_len * step_sec)
+            else:
+                cache[k] = voice(kind, midi, steps_len * step_sec)
         return cache[k]
+
+    def dcache(d: str) -> np.ndarray:
+        if d not in cache:
+            cache[d] = sample_voice(samples[d][0], d) if d in samples else drum(d)
+        return cache[d]
     rinfo = sketch.get("ref")
     for r in range(repeat):
         off = r * steps * step_sec
@@ -252,17 +296,16 @@ def render(sketch: dict, repeat: int = 1, ref: np.ndarray | None = None) -> np.n
                 pat = sketch["drums"][d]
                 for s, ch in enumerate(pat):
                     if ch in "xX":
-                        x = cache.setdefault(d, drum(d))
-                        add(x, off + s * step_sec, mix["drums"]["vol"] * (1.0 if ch == "X" else 0.72))
+                        add(dcache(d), off + s * step_sec, mix["drums"]["vol"] * (1.0 if ch == "X" else 0.72))
         for part, kind in (("bass", "bass"), ("melody", "lead")):
             if mix[part]["mute"]:
                 continue
             for n in sketch[part]:
-                add(vcache(kind, note_midi(n["note"]), n["len"]), off + n["at"] * step_sec, mix[part]["vol"])
+                add(vcache(part, kind, note_midi(n["note"]), n["len"]), off + n["at"] * step_sec, mix[part]["vol"])
         if not mix["chords"]["mute"]:
             for c in sketch["chords"]:
                 for midi in chord_midis(c["name"]):
-                    add(vcache("pad", midi, c["len"]), off + c["at"] * step_sec, mix["chords"]["vol"])
+                    add(vcache("chords", "pad", midi, c["len"]), off + c["at"] * step_sec, mix["chords"]["vol"])
     out = out[: int(SR * (total + 1.0))]                 # 余韻は 1 秒まで
     peak = float(np.max(np.abs(out))) if len(out) else 0.0
     if peak > 0.89:                                        # 割れないように -1 dBFS に収める

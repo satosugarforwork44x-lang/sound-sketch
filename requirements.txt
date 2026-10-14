@@ -1,1 +1,2 @@
-numpy>=1.24         # 音源（ドラム・ベース・コード・メロディを合成して WAV にする）。BSD-3-Clause
+numpy>=1.24           # 音源（ドラム・ベース・コード・メロディを合成して WAV にする）。BSD-3-Clause
+soundcard>=0.4.4      # 任意: マイクで自分の音を録る（Windows の WASAPI）。無くても WAV を落とせば使える。BSD-3-Clause

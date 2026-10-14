@@ -92,6 +92,75 @@ class SketchTest(unittest.TestCase):
         with self.assertRaises(self.api.SketchError):
             self.api.blob_path("a-" + "Li4vLi4vYm9vdC5pbmk" + ".wav")       # ../../boot.ini は渡さない
 
+    def test_sampler_record_process_assign(self):
+        if not self.api.state()["numpy"]:
+            self.skipTest("numpy なし")
+        import sys, time
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        from fake_mic import FakeSoundcard
+        fake = FakeSoundcard(tone=0, speed=8)
+        self.api.mic_backend = fake
+
+        def wait():
+            for _ in range(200):
+                st = self.api.mic_state()
+                if st["phase"] == "idle":
+                    return st
+                time.sleep(0.02)
+            self.fail("録音が終わらない")
+
+        self.assertTrue(self.api.mic_state()["available"])
+        self.api.noise_start()                       # 部屋の雑音を 2 秒
+        st = wait()
+        self.assertIsNotNone(st["noise"])
+        self.assertTrue((self.tmp / "data" / "noise.npy").exists())
+        fake.tone = 1200.0                           # ガラスを叩く
+        self.api.rec_start()
+        time.sleep(0.25)
+        st = self.api.rec_stop()
+        st = wait()
+        self.assertGreater(st["raw"], 1.0)
+        r = self.api.sample_process({"length": 1.0})
+        self.assertLessEqual(r["duration"], 1.0)
+        self.assertEqual(r["root"], "D6")            # 1200 Hz ≒ D6
+        self.assertTrue(self.api.blob_path(r["key"]).exists())
+        saved = self.api.sample_save("glass", {"length": 1.0}, r["root"])
+        self.assertEqual(saved["file"], "glass.wav")
+        self.assertEqual(self.api.sample_save("glass", {}, "D6")["file"], "glass (2).wav")   # 上書きしない
+        smp = {s["file"]: s for s in self.api.samples()}
+        self.assertEqual(smp["glass.wav"]["root"], "D6")
+        # 割り当て: メロディとクラップ
+        sk = self.api.new_sketch("v")["sketch"]
+        sk["voices"] = {"melody": {"sample": "glass.wav", "root": "D6"}, "clap": {"sample": "glass.wav"},
+                        "piano": {"sample": "x.wav"}, "bass": {"sample": "../x.wav"}}
+        sk["melody"] = [{"at": 0, "note": "D5", "len": 4}]
+        w = self.api.save_sketch("v", sk)["warnings"]
+        self.assertEqual(len(w), 2)                  # 知らない枠・フォルダを出る名前は読み飛ばす
+        got = self.api.open_sketch("v")["sketch"]["voices"]
+        self.assertEqual(set(got), {"melody", "clap"})
+        self.assertIn('"voices"', (self.tmp / "Sketch" / "v.sketch.json").read_text(encoding="utf-8"))
+        s = smp["glass.wav"]
+        key = f"s-melody--12-{s['ver']}-{s['b64']}.wav"         # 1 オクターブ下 → 長さは 2 倍
+        p = self.api.blob_path(key)
+        with wave.open(str(p)) as a, wave.open(str(self.tmp / "Sketch" / "samples" / "glass.wav")) as b:
+            self.assertAlmostEqual(a.getnframes() / b.getnframes(), 2.0, delta=0.01)
+        out = self.api.export_wav("v", 1)
+        self.assertEqual(out["warnings"], [])
+        (self.tmp / "Sketch" / "samples" / "glass.wav").unlink()
+        self.assertEqual(len(self.api.export_wav("v", 1)["warnings"]), 2)   # 消えた音は内蔵の音に戻して書き出す
+        with self.assertRaises(self.api.SketchError):
+            self.api.blob_path(f"s-melody-0-1-{s['b64']}.wav")
+
+    def test_pitch_detection(self):
+        if not self.api.state()["numpy"]:
+            self.skipTest("numpy なし")
+        import numpy as np
+        smp = self.api._sampler()
+        t = np.arange(44100) / 44100
+        for hz, midi in ((110.0, 45), (440.0, 69), (1046.5, 84)):
+            x = (np.sin(2 * np.pi * hz * t) + 0.5 * np.sin(4 * np.pi * hz * t)) * np.exp(-t / 0.5)
+            self.assertEqual(round(smp.detect_pitch(x)["midi"]), midi)
+
 
 if __name__ == "__main__":
     unittest.main()

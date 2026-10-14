@@ -7,6 +7,7 @@
 An extension app for **[Hub](https://github.com/satosugarforwork44x-lang/desktop-hub)**, the slim bar on the edge of your Windows desktop.
 Sketch a few bars of drums, bass, chords and melody **from your computer keyboard**, let **Claude** rewrite them as data,
 and export a WAV to hand to an AI music tool such as **Suno** — without ever opening a DAW.
+Tap a glass, record it, and it becomes an instrument you can play on the keys.
 
 ![Sound Sketch — drums, bass, chords and melody, with the mini keyboard at the bottom](docs/sketch.png)
 
@@ -43,6 +44,7 @@ The layout went through several rounds of real use. The table shows what was cho
 | **Chords snap to half bars** | One chord per bar is the most common, two per bar the next. Clicking the first half of a bar fills the whole bar; clicking the second half splits it. No more chords stuck on the 4th beat |
 | **Easy to erase** | Right-click deletes a cell, note or chord. Notes are hit even if you miss by one row. The 🗑 next to each part clears it. Lanes grow with the window, so rows are easier to hit |
 | **A reference track** | Hum, sing or record something (e.g. with Hub's Rec Sketch, which can remove room noise) and drop the WAV on the panel. It loops with the sketch, so you can play along with your own voice. Drag the waveform to line up the start; double-click jumps to where the sound begins. It is mixed into the exported WAV too |
+| **Your own sounds, in four steps** | Tap a glass, clap, knock or say "pa" into the mic, and play it on the keys or a drum pad. The steps are laid out as 1 → 4 (measure the room, record, shape, use) so there is nothing to learn. Silence is cut, the volume evened out and room noise removed automatically; the **pitch is detected** so the keys play in tune (tuned sounds via YIN, struck sounds like glass via their strongest tone — fix it by ear with ‹ ›). Built in, so it works without Hub's Rec Sketch |
 | **You can always see what is playing** | The row of the note you press glows; during playback, sounding notes and chords are outlined |
 | **Nothing is lost** | `Ctrl+Z` undo. WAV export never overwrites (`name (2).wav`). Edits made outside (by Claude) are picked up automatically |
 | **Remappable keys** | Keys are stored by physical position (`KeyboardEvent.code`), so JIS and US keyboards behave the same. A numpad preset is included |
@@ -55,13 +57,16 @@ The layout went through several rounds of real use. The table shows what was cho
 | **Mixer** | Volume and mute per part |
 | **Mouse editing** | Click grid cells and notes to add or remove them, click the chord lane to choose a chord |
 | **Reference track** | Any WAV in the sketch folder (or dropped on the panel) plays along, mixed into the export |
+| **Make a sound** | Record a short sound (or drop a WAV), shape it and use it as the bass, chords, melody or any drum. Saved in `samples/` next to the sketches; used for playing and for the export |
 | **Export** | WAV (44.1 kHz, 16-bit), repeated ×1 / ×2 / ×4 / ×8, saved next to the sketch |
 | **Claude integration** | Share the sketch folder with Claude through Hub's MCP settings. Claude reads `SKETCH_FORMAT.md` and edits the JSON |
 | **English & Japanese** | The panel is available in both languages |
 
+![Make a sound — measure the room, record, shape, use](docs/sampler.png)
+
 ## Getting started
 
-Requires **Hub 0.7 or later** (0.7.5+ for the keyboard icon on the bar) and **numpy**.
+Requires **Hub 0.7 or later** (0.7.5+ for the keyboard icon on the bar) and **numpy**. Recording your own sounds also needs **soundcard** (optional — without it, you can still drop a WAV).
 
 1. Put this repository into Hub's module folder **as `sketch`** (the folder name must match the module id):
    ```bat
@@ -72,6 +77,7 @@ Requires **Hub 0.7 or later** (0.7.5+ for the keyboard icon on the bar) and **nu
 3. Drop a folder onto the panel to keep your sketches in. A folder inside Hub's folder-panel location
    (e.g. `C:\Users\you\Hub\Sound Sketch`) is best: it also becomes a folder panel.
 4. (Optional) To let Claude edit sketches: Hub Settings (⚙) → Claude integration → set that folder panel to **read & write**.
+5. (Optional) To record: Windows Settings → Privacy & security → Microphone → allow **desktop apps** to use the microphone.
 
 ## Keys
 
@@ -112,6 +118,7 @@ The panel notices the change within about a second. Claude never writes audio co
   "bass":   [ {"at": 0, "note": "C2", "len": 3} ],
   "chords": [ {"at": 0, "name": "Cm7", "len": 8}, {"at": 8, "name": "Abmaj7", "len": 8} ],
   "melody": [ {"at": 0, "note": "G4", "len": 2} ],
+  "voices": { "melody": {"sample": "glass.wav", "root": "D6"} },
   "mix": { "drums": {"vol": 0.8, "mute": false}, "...": "..." }
 }
 ```
@@ -123,13 +130,17 @@ The panel notices the change within about a second. Claude never writes audio co
 | `manifest.json` | Hub module definition (`moduleApi 1`): panel, tile icon, exported functions, `/blob/sketch/…` for audio |
 | `api.py` | Saves and validates sketches (anything unreadable is skipped with a warning), atomic writes, WAV export without overwriting, key-map storage |
 | `synth.py` | The numpy sound engine: drums, bass, pad and lead voices, chord/note parsing, mixdown |
+| `mic.py` | Records a short sound from the default mic in a thread (soundcard / WASAPI, kept in memory) |
+| `sampler.py` | Shapes a recording: spectral noise subtraction, silence trimming, length and fade, volume, pitch detection (YIN + strongest-tone fallback) |
 | `ui/panel.js` | The panel: canvas lanes, mini keyboard, recording, scheduling with Web Audio, key handling |
+| `ui/sampler.js` | The "Make a sound" screen (4 steps, waveform, pitch, sound assignments) |
 | `ui/theory.js` | Keys, scales, diatonic chords — the same rules as `synth.py` |
 | `ui/keys.js` | Default key map, presets, key labels |
 | `SKETCH_FORMAT.md` | The format, written for Claude |
 
 - **One engine, two uses.** For live playing, the panel asks Hub for single notes (`v-lead-67.wav`, …). Hub renders them once with `synth.py`
   and caches them; the browser schedules them with Web Audio. Export renders the whole sketch with the same functions.
+- **Recorded sounds are just another voice.** A sample is played on the keys by resampling it from its detected pitch (like a classic sampler), served as `s-<slot>-<shift>-….wav` from the same cache the built-in voices use.
 - **Data first.** The sketch file is the single source of truth. The panel polls its modification time, so edits from Claude or a text editor just appear.
 - **No changes to Hub's core.** Everything is a regular Hub module (only the bar icon was added to Hub's icon set).
 
@@ -147,5 +158,6 @@ Commercial use is not permitted. For commercial use, please contact the author.
 | Library | Used for | License |
 |---|---|---|
 | numpy | sound engine | BSD-3-Clause |
+| soundcard (optional) | recording from the microphone | BSD-3-Clause |
 
 The logo (`assets/`) is covered by the same license as this repository.

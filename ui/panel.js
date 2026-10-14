@@ -4,6 +4,7 @@
 import { TOKEN, selectBox } from "/ui/js/hub.js";
 import { KEYS, VOICE, BASE_OCT, ROMAN, SOLFA, chordMidis, inScale, keyChord, keyMidi, midiName, noteMidi } from "./theory.js";
 import { ACTIONS, PRESETS, assign, keyLabel, normalizeKeymap } from "./keys.js";
+import { MIC_ICON, SL, createSampler } from "./sampler.js";
 
 const EN = (document.documentElement.lang || navigator.language || "ja").startsWith("en");
 const L = EN ? {
@@ -32,6 +33,7 @@ const L = EN ? {
   refEmpty: "Drop a WAV here or pick one on the left — it plays along with the sketch (a recording, an exported song, …)",
   refHelp: "Drag to line up the start · double-click = jump to where the sound begins", refRemove: "Remove the reference",
   refMissing: (f) => `${f} is not in the sketch folder`, refAdded: (f) => `Added ${f} as the reference`, clearPart: (p) => `Clear ${p}`, cleared: (p) => `Cleared ${p} (Ctrl+Z to undo)`, clickTip: "Click a key to put it at the cursor (▼)", rhythm: "Rhythm presets", rhythmSet: (n) => `Set “${n}” (Ctrl+Z to undo)`, del: "Delete", placeChord: "Pick a chord for this spot",
+  voiceBuiltIn: "Sound: built-in · make your own", voiceSample: (f) => `Sound: ${f}`, voiceDrums: (n) => (n > 1 ? `${n} pads use your sounds` : "1 pad uses your sound"),
 } : {
   dropFolder: "スケッチの保存先にするフォルダを、ここに落としてください",
   dropNote: "おすすめ: フォルダ窓のフォルダ（例: registries\\Sketch）を使い、Hub の設定で Claude に「読み書き」で共有すると、Claude がスケッチを直せます。",
@@ -58,6 +60,7 @@ const L = EN ? {
   refEmpty: "WAV をここに落とすか、左で選ぶと、スケッチと一緒に鳴ります（録音・書き出した曲など）",
   refHelp: "ドラッグで頭を合わせる ・ ダブルクリックで音の出だしに合わせる", refRemove: "参考の音を外す",
   refMissing: (f) => `${f} が保存先フォルダにありません`, refAdded: (f) => `${f} を参考の音にしました`, clearPart: (p) => `${p}を全部消す`, cleared: (p) => `${p}を消しました（Ctrl+Z で戻せます）`, clickTip: "クリックすると、カーソル（▼）の位置に入ります", rhythm: "リズムのプリセット", rhythmSet: (n) => `「${n}」にしました（Ctrl+Z で戻せます）`, del: "消す", placeChord: "ここに置くコードを選んでください",
+  voiceBuiltIn: "音色: 内蔵の音 ・ 自分で作る", voiceSample: (f) => `音色: ${f}`, voiceDrums: (n) => `${n} つのパッドが録った音`,
 };
 
 const PARTS = ["drums", "bass", "chords", "melody"];
@@ -163,6 +166,10 @@ export async function mount(el, ctx) {
   ctx.onNativeDrop(async (paths) => {
     if (!paths?.length) return;
     try {
+      if (smp.isOpen()) {                                         // 「音を作る」を開いているときの WAV は、整える元に
+        if (/\.wav$/i.test(paths[0])) await smp.loadFile(paths[0]);
+        return;
+      }
       if (/\.wav$/i.test(paths[0]) && st?.folder && sk) {      // WAV は参考の音に（保存先フォルダに写す）
         const r = await ctx.call("import_audio", { path: paths[0] });
         st.audio = (await ctx.call("state")).audio;
@@ -179,6 +186,7 @@ export async function mount(el, ctx) {
     try {
       const r = await ctx.call("poll", { name });
       if (r.audio && JSON.stringify(r.audio) !== JSON.stringify(st.audio)) { st.audio = r.audio; buildLabels(); updateParts(); }
+      if (r.samples && JSON.stringify(r.samples) !== JSON.stringify(st.samples)) { st.samples = r.samples; buildPad(); preload(); smp.refreshSlots(); }
       if (r.mtime && mtime && Math.abs(r.mtime - mtime) > 1e-6 && !saving && !saveTimer) await open(name, true);
     } catch { /* フォルダが一時的に読めない等は次の回に */ }
   }, 1500);
@@ -238,8 +246,21 @@ export async function mount(el, ctx) {
     }
     return loading.get(key);
   }
-  const drumKey = (d) => `d-${d}.wav`;
-  const voiceKey = (p, midi) => `v-${VOICE[p]}-${midi}.wav`;
+  // 録った音を割り当てた枠は、その音を高さに合わせてずらしたもの（s-…）。無ければ内蔵の音
+  function slotSample(slot) {
+    const v = sk?.voices?.[slot];
+    const s = v && (st?.samples || []).find((x) => x.file === v.sample);
+    return s ? { ...s, rootMidi: noteMidi(v.root || s.root || "C4") } : null;
+  }
+  const drumKey = (d) => { const s = slotSample(d); return s ? `s-${d}-0-${s.ver}-${s.b64}.wav` : `d-${d}.wav`; };
+  const voiceKey = (p, midi) => {
+    const s = slotSample(p);
+    if (!s) return `v-${VOICE[p]}-${midi}.wav`;
+    let sh = midi - s.rootMidi;
+    while (sh > 36) sh -= 12;
+    while (sh < -36) sh += 12;
+    return `s-${p}-${sh}-${s.ver}-${s.b64}.wav`;
+  };
   function preload() {
     if (!st?.numpy) return;
     const keys = new Set(DRUMS.map(drumKey));
@@ -401,7 +422,7 @@ export async function mount(el, ctx) {
     if (!sk || main.hidden) return;
     if (e.isComposing || e.key === "Process") { showIme(); return; }
     const tag = e.target?.tagName;
-    if ((tag === "INPUT" && e.target.type !== "range") || tag === "TEXTAREA" || document.querySelector(".menu") || !overlay.hidden) return;
+    if ((tag === "INPUT" && e.target.type !== "range") || tag === "TEXTAREA" || document.querySelector(".menu") || !overlay.hidden || !smpEl.hidden) return;
     // 直前に押したボタンにフォーカスが残っていると、Space / Enter でそのボタンまで押されてしまうので外す
     if (tag === "BUTTON" || tag === "INPUT") document.activeElement.blur();
     if ((e.ctrlKey || e.metaKey) && e.code === "KeyZ") { e.preventDefault(); return doUndo(); }
@@ -481,7 +502,8 @@ export async function mount(el, ctx) {
       <div class="sk-pad">
         <div class="sk-pad-head"><span class="sk-pad-title"></span>
           <div class="seg seg-sm sk-mode" role="radiogroup"><button type="button" role="radio" data-m="white"><span>${L.white}</span></button><button type="button" role="radio" data-m="penta"><span>${L.penta}</span></button></div>
-          <span class="sk-rhythm"></span><span class="sk-pad-mods"></span><span class="sk-pad-rec"></span></div>
+          <span class="sk-rhythm"></span><span class="sk-pad-mods"></span><span class="sk-pad-rec"></span>
+          <button type="button" class="sk-voice"></button></div>
         <div class="sk-pad-keys"></div>
       </div>
       <div class="sk-foot">
@@ -537,6 +559,7 @@ export async function mount(el, ctx) {
         changed(() => { for (const d of DRUMS) sk.drums[d] = (r[d] || "................").repeat(sk.bars); });
         ctx.toast(L.rhythmSet(EN ? r.en : r.ja));
       } }));
+    $(".sk-voice").addEventListener("click", () => { releaseAll(); smp.open(isPiano() ? part : null); });
     buildLabels();
     const cv = $(".sk-cv");
     cv.addEventListener("pointerdown", onCanvas);
@@ -712,12 +735,22 @@ export async function mount(el, ctx) {
     const mods = main.querySelector(".sk-pad-mods");
     const rh = main.querySelector(".sk-pad-rec");
     main.querySelector(".sk-mode").hidden = part !== "bass" && part !== "melody";
+    const vb = main.querySelector(".sk-voice");
+    const own = part === "drums" ? DRUMS.filter((d) => slotSample(d)).length : slotSample(part);
+    vb.innerHTML = `${MIC_ICON}<span></span>`;
+    vb.querySelector("span").textContent = part === "drums"
+      ? (own ? L.voiceDrums(own) : L.voiceBuiltIn)
+      : (own ? L.voiceSample(own.file.replace(/\.wav$/i, "")) : L.voiceBuiltIn);
+    vb.classList.toggle("on", !!own);
+    vb.title = SL.title;
     if (part === "drums") {
       main.querySelector(".sk-pad-title").textContent = L.padDrums;
       rh.textContent = ""; mods.innerHTML = "";
       box.querySelectorAll(".sk-cap").forEach((b) => {
         b.querySelector("kbd").textContent = keyLabel(km[b.dataset.k]);
         b.querySelector("b").textContent = L.drums[b.dataset.k];
+        const s = slotSample(b.dataset.k);
+        b.querySelector("small").textContent = s ? `♪ ${s.file.replace(/\.wav$/i, "")}` : "";
       });
       return;
     }
@@ -1093,6 +1126,7 @@ export async function mount(el, ctx) {
     showKeys();
   }
   function showKeys() {
+    if (smp.isOpen()) smp.close();
     overlay.hidden = false;
     releaseAll();
     overlay.innerHTML = `<div class="sk-keys-in">
@@ -1142,6 +1176,35 @@ export async function mount(el, ctx) {
       }
       grid.append(sec);
     }
+  }
+
+  // ---------- 音を作る（録った音を楽器にする） ----------
+  const smpEl = document.createElement("div");
+  smpEl.className = "sk-keys";
+  smpEl.hidden = true;
+  root.append(smpEl);
+  const smp = createSampler({
+    ctx, el: smpEl,
+    play: (key) => { audio(); load(key).then(() => sound(key, ac.currentTime, null, 1)).catch((e) => ctx.toast(e.message, "error")); },
+    sketch: () => sk,
+    samples: () => st?.samples || [],
+    setSamples: (list) => { st.samples = list; },
+    assign: assignVoice,
+    closed: (used) => {
+      if (!sk) return;
+      if (used) selectPart(DRUMS.includes(used) ? "drums" : used);
+      else { buildPad(); preload(); }
+    },
+  });
+  ctx.addTool(MIC_ICON, SL.title, () => { if (!sk) return; if (smp.isOpen()) smp.close(); else { releaseAll(); hideKeys(); smp.open(isPiano() ? part : null); } });
+  function assignVoice(slot, file, rootName) {
+    changed(() => {
+      const v = { ...(sk.voices || {}) };
+      if (file) v[slot] = DRUMS.includes(slot) ? { sample: file } : { sample: file, root: rootName || "C4" };
+      else delete v[slot];
+      sk.voices = v;
+    });
+    preload(); smp.refreshSlots();
   }
 
   await refresh();

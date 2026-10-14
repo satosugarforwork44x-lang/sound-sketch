@@ -1,34 +1,122 @@
 {
   "id": "sketch",
   "name": "サウンドスケッチ",
-  "version": "0.6.0",
-  "summary": "リズム・ベース・コード・メロディを数小節だけ作り、WAV にして AI（Suno など）に渡す。キーボードで叩いて入力できる",
+  "version": "0.7.0",
+  "summary": "リズム・ベース・コード・メロディを数小節だけ作り、WAV にして AI（Suno など）に渡す。キーボードで叩いて入力。マイクで録った音も楽器にできる",
   "kind": "panel",
   "runtime": "python",
   "api": "api.py",
   "visibility": "public",
-  "requires": { "hub": ">=0.7", "moduleApi": 1 },
+  "requires": {
+    "hub": ">=0.7",
+    "moduleApi": 1
+  },
   "hub": {
     "window": "panel",
-    "size": [920, 770],
+    "size": [
+      920,
+      770
+    ],
     "ui": "ui/panel.js",
-    "tile": { "icon": "pianoKeys" },
+    "tile": {
+      "icon": "pianoKeys"
+    },
     "blob": "blob_path"
   },
   "exports": [
-    { "fn": "state", "summary": "保存先・スケッチの一覧・numpy の有無" },
-    { "fn": "set_folder", "summary": "保存先フォルダを決める" },
-    { "fn": "open_sketch", "summary": "スケッチを開く" },
-    { "fn": "new_sketch", "summary": "新しいスケッチを作る" },
-    { "fn": "save_sketch", "summary": "スケッチを保存する" },
-    { "fn": "poll", "summary": "外で書き換えられたか（更新時刻）" },
-    { "fn": "ref_info", "summary": "参考の音（WAV）の長さ・出だし・波形" },
-    { "fn": "import_audio", "summary": "落とした WAV を保存先フォルダに写す" },
-    { "fn": "export_wav", "summary": "WAV に書き出す（上書きしない）" },
-    { "fn": "keymap_get", "summary": "キーの割り当て" },
-    { "fn": "keymap_set", "summary": "キーの割り当てを保存" },
-    { "fn": "keymap_export", "summary": "キーの割り当てを保存先フォルダに書き出す" },
-    { "fn": "keymap_import", "summary": "キーの割り当てを保存先フォルダから読み込む" }
+    {
+      "fn": "state",
+      "summary": "保存先・スケッチの一覧・numpy の有無"
+    },
+    {
+      "fn": "set_folder",
+      "summary": "保存先フォルダを決める"
+    },
+    {
+      "fn": "open_sketch",
+      "summary": "スケッチを開く"
+    },
+    {
+      "fn": "new_sketch",
+      "summary": "新しいスケッチを作る"
+    },
+    {
+      "fn": "save_sketch",
+      "summary": "スケッチを保存する"
+    },
+    {
+      "fn": "poll",
+      "summary": "外で書き換えられたか（更新時刻）"
+    },
+    {
+      "fn": "ref_info",
+      "summary": "参考の音（WAV）の長さ・出だし・波形"
+    },
+    {
+      "fn": "import_audio",
+      "summary": "落とした WAV を保存先フォルダに写す"
+    },
+    {
+      "fn": "mic_state",
+      "summary": "録音の様子（雑音を測る・録る）"
+    },
+    {
+      "fn": "noise_start",
+      "summary": "部屋の雑音を 2 秒測る"
+    },
+    {
+      "fn": "noise_clear",
+      "summary": "測った雑音を忘れる"
+    },
+    {
+      "fn": "rec_start",
+      "summary": "短い音を録り始める"
+    },
+    {
+      "fn": "rec_stop",
+      "summary": "録音を止める"
+    },
+    {
+      "fn": "sample_load",
+      "summary": "WAV を整える元にする"
+    },
+    {
+      "fn": "sample_process",
+      "summary": "録った音を整えて試し聞きを作る"
+    },
+    {
+      "fn": "sample_save",
+      "summary": "整えた音を samples フォルダに保存"
+    },
+    {
+      "fn": "samples",
+      "summary": "録った音の一覧"
+    },
+    {
+      "fn": "export_wav",
+      "summary": "WAV に書き出す（上書きしない）"
+    },
+    {
+      "fn": "keymap_get",
+      "summary": "キーの割り当て"
+    },
+    {
+      "fn": "keymap_set",
+      "summary": "キーの割り当てを保存"
+    },
+    {
+      "fn": "keymap_export",
+      "summary": "キーの割り当てを保存先フォルダに書き出す"
+    },
+    {
+      "fn": "keymap_import",
+      "summary": "キーの割り当てを保存先フォルダから読み込む"
+    }
   ],
-  "locales": { "en": { "name": "Sound Sketch", "summary": "Sketch a few bars of drums, bass, chords and melody from the keyboard, then export a WAV for AI tools such as Suno" } }
+  "locales": {
+    "en": {
+      "name": "Sound Sketch",
+      "summary": "Sketch a few bars of drums, bass, chords and melody from the keyboard — or with sounds you record — then export a WAV for AI tools such as Suno"
+    }
+  }
 }
