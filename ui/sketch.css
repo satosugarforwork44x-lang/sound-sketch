@@ -193,3 +193,11 @@
 .sk-smp-slots .select { min-width: 120px; max-width: 150px; }
 .sk-smp-slots .select-value { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 @media (prefers-reduced-motion: reduce) { .sk-s-rec.on .icon { animation: none; } .sk-meter i { transition: none; } }
+.sk-meters { display: grid; gap: 4px; flex: 1; min-width: 120px; max-width: 240px; }
+.sk-mrow { display: grid; grid-template-columns: 52px 1fr; align-items: center; gap: 6px; }
+.sk-mrow small { font-size: 10.5px; color: var(--faint); white-space: nowrap; }
+.sk-mrow .sk-meter { max-width: none; min-width: 0; }
+.sk-mrow.off { opacity: .35; }
+.sk-s-srcrow[hidden] { display: none; }
+.sk-s-src.seg.seg-sm { width: 240px; }
+.sk-s-warn { font-size: 11px; }

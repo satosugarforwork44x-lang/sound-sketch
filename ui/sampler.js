@@ -10,7 +10,9 @@ export const SL = EN ? {
   s1: "1  Measure the room", s1n: "Stay quiet for 2 seconds. It is remembered, so once is enough.",
   noise: "Measure noise (2 s)", measuring: "Measuring… stay quiet", noiseNone: "Not measured — noise is not removed",
   noiseOk: (db) => `Measured (${db} dB)`, noiseZero: "Measured — this mic is silent when quiet, nothing to remove", forget: "Forget",
-  s2: "2  Record", s2n: "Press Record, make the sound, then Stop (8 s max). You can also drop a WAV here.",
+  s2: "2  Record", s2n: "Press Record, make the sound, then Stop (8 s max). The mic and the PC's sound (a call, a video, …) are recorded separately — pick one in step 3. You can also drop a WAV here.",
+  s2warn: "Music from your speakers also reaches the mic — use headphones. Using someone's voice or someone else's work? Ask them first, and mind copyright before sharing.",
+  srcMic: "Mic", srcPc: "PC sound", srcBoth: "Both", src: "Use", srcNone: "(nothing)",
   rec: "Record", stop: "Stop", noMic: "Recording needs soundcard: run  py -m pip install soundcard  and restart Hub. You can still drop a WAV here.",
   from: (f) => `From ${f}`,
   s3: "3  Shape", trim: "Cut silence", norm: "Even volume", denoise: "Remove noise", length: "Length", play: "Listen",
@@ -26,7 +28,9 @@ export const SL = EN ? {
   s1: "1  部屋の雑音を測る", s1n: "2 秒だけ静かにしてください。覚えておくので、1 回で十分です。",
   noise: "雑音を測る（2 秒）", measuring: "測っています… 静かに", noiseNone: "まだ測っていません（雑音は消しません）",
   noiseOk: (db) => `測りました（${db} dB）`, noiseZero: "測りました（このマイクは静かなとき無音なので、消す雑音はありません）", forget: "忘れる",
-  s2: "2  録る", s2n: "録音を押して音を出し、止めるを押します（最長 8 秒）。WAV をここに落としても使えます。",
+  s2: "2  録る", s2n: "録音を押して音を出し、止めるを押します（最長 8 秒）。マイクと PC の音（通話・動画など）を別々に録るので、どちらを使うかは 3 で選べます。WAV をここに落としても使えます。",
+  s2warn: "スピーカーで鳴らした音楽はマイクにも入るので、ヘッドホンを使ってください。人の声や他の人の作品を使うときは、相手の了解と著作権に気を付けてください。",
+  srcMic: "マイク", srcPc: "PC の音", srcBoth: "両方", src: "使う音", srcNone: "（無音）",
   rec: "録音", stop: "止める", noMic: "録音には soundcard が必要です（py -m pip install soundcard を実行して Hub を再起動）。WAV を落として使うことはできます。",
   from: (f) => `${f} から`,
   s3: "3  整える", trim: "前後の無音を切る", norm: "音量をそろえる", denoise: "雑音を引く", length: "長さ", play: "試し聞き",
@@ -53,7 +57,7 @@ export const MIC_ICON = svg('<rect x="9" y="3" width="6" height="11" rx="3"/><pa
 /** host: { ctx, el（重ねる箱）, play(key), sketch(), samples(), setSamples(list), assign(slot, file|null, root), closed(slot|null) } */
 export function createSampler(host) {
   const { ctx, el } = host;
-  const opts = { trim: true, normalize: true, denoise: true, length: 1.5 };
+  const opts = { source: "mic", trim: true, normalize: true, denoise: true, length: 1.5 };
   let ms = null;          // api.mic_state()
   let res = null;         // api.sample_process() の結果
   let root = 60, rootAuto = true, slot = "melody", nameVal = "";
@@ -91,7 +95,7 @@ export function createSampler(host) {
     if (s.error && pending) ctx.toast(s.error, "error", 9000);
     const was = pending;
     pending = null;
-    if (was === "rec" && s.raw) { wasRec = true; process(); }
+    if (was === "rec" && s.raw) { pickSource(s); wasRec = true; process(); }
     else if (was === "noise") { updateShape(); processSoon(); }
   }
   function startPoll() {
@@ -113,12 +117,18 @@ export function createSampler(host) {
     updateShape();
     if (wasRec) { wasRec = false; host.play(r.key); }   // 録った直後は 1 回聞かせる
   }
+  // 録れた方を選んでおく。マイクがほぼ無音で PC の音があれば PC の音（電話越しの声・動画の音を録ったとき）
+  function pickSource(s) {
+    const src = s.sources || {}, loud = (v) => v != null && v > -45;
+    opts.source = src.mic == null || (!loud(src.mic) && loud(src.pc)) ? "pc" : "mic";
+    if (src.pc == null) opts.source = "mic";
+  }
   const processSoon = () => { clearTimeout(procTimer); procTimer = setTimeout(process, 150); };
 
   async function loadFile(path) {
     const s = await call("sample_load", { path });
     if (!s) return;
-    ms = s; res = null; rootAuto = true;
+    ms = s; res = null; rootAuto = true; opts.source = "mic";
     nameVal = path.split(/[\\/]/).pop().replace(/\.wav$/i, "");
     build(); updateTop();
     wasRec = true; process();
@@ -133,9 +143,13 @@ export function createSampler(host) {
         <section class="sk-step" data-s="1"><h3></h3><p class="sk-step-n"></p>
           <div class="sk-step-row"><button type="button" class="btn sk-s-noise"></button><span class="sk-s-nstat"></span><button type="button" class="sk-link sk-s-forget"></button></div></section>
         <section class="sk-step" data-s="2"><h3></h3><p class="sk-step-n"></p>
-          <div class="sk-step-row"><button type="button" class="btn sk-s-rec"></button><span class="sk-meter"><i></i></span><span class="sk-s-sec"></span></div>
-          <p class="sk-s-from"></p></section>
+          <div class="sk-step-row"><button type="button" class="btn sk-s-rec"></button>
+            <span class="sk-meters"><span class="sk-mrow" data-s="mic"><small></small><span class="sk-meter"><i></i></span></span>
+              <span class="sk-mrow" data-s="pc"><small></small><span class="sk-meter"><i></i></span></span></span>
+            <span class="sk-s-sec"></span></div>
+          <p class="sk-s-from"></p><p class="sk-step-n sk-s-warn"></p></section>
         <section class="sk-step sk-step-wide" data-s="3"><h3></h3>
+          <div class="sk-step-row sk-s-srcrow"><span class="sk-f"></span><div class="seg seg-sm sk-s-src" role="radiogroup"></div></div>
           <canvas class="sk-s-wave"></canvas>
           <div class="sk-step-row sk-s-togs"></div>
           <div class="sk-step-row"><span class="sk-f"></span><input type="range" class="sk-s-len" min="0.1" max="4" step="0.05"><span class="sk-s-lenv"></span>
@@ -161,10 +175,21 @@ export function createSampler(host) {
     st(1, SL.s1, SL.s1n); st(2, SL.s2, SL.s2n); st(3, SL.s3); st(4, SL.s4);
     $(".sk-s-noise").textContent = SL.noise;
     $(".sk-s-noise").addEventListener("click", async () => { const s = await call("noise_start"); if (s) { pending = "noise"; onState(s); } });
+    $(".sk-s-warn").textContent = SL.s2warn;
+    el.querySelectorAll(".sk-mrow").forEach((r) => { r.querySelector("small").textContent = r.dataset.s === "mic" ? SL.srcMic : SL.srcPc; });
+    $(".sk-s-srcrow .sk-f").textContent = SL.src;
+    for (const [v, label] of [["mic", SL.srcMic], ["pc", SL.srcPc], ["both", SL.srcBoth]]) {
+      const b = document.createElement("button");
+      b.type = "button"; b.setAttribute("role", "radio"); b.dataset.v = v;
+      b.innerHTML = "<span></span>"; b.firstChild.textContent = label;
+      b.addEventListener("click", () => { if (opts.source === v) return; opts.source = v; rootAuto = true; updateShape(); processSoon(); });
+      $(".sk-s-src").append(b);
+    }
     $(".sk-s-forget").textContent = SL.forget;
     $(".sk-s-forget").addEventListener("click", async () => { const s = await call("noise_clear"); if (s) { ms = s; updateTop(); processSoon(); } });
     $(".sk-s-rec").addEventListener("click", async () => {
       if (ms?.phase === "rec") { const s = await call("rec_stop"); if (s) onState(s); return; }
+      host.stopPlayback();                           // サウンドスケッチ自身の音を PC の音に入れない
       const s = await call("rec_start");
       if (s) { pending = "rec"; res = null; rootAuto = true; updateShape(); onState(s); }
     });
@@ -237,11 +262,15 @@ export function createSampler(host) {
     rb.querySelector("span").textContent = recOn ? SL.stop : SL.rec;
     rb.classList.toggle("on", recOn);
     rb.disabled = !ms.available || ms.phase === "noise";
-    const lvl = ms.level == null ? 0 : Math.max(0, Math.min(1, (ms.level + 60) / 60));
-    $(".sk-meter i").style.width = `${busy ? lvl * 100 : 0}%`;
+    const lv = (v) => (v == null ? 0 : Math.max(0, Math.min(1, (v + 60) / 60)));
+    el.querySelectorAll(".sk-mrow").forEach((r) => {
+      const v = ms.levels?.[r.dataset.s];
+      r.querySelector("i").style.width = `${busy && ms.phase === "rec" ? lv(v) * 100 : r.dataset.s === "mic" && ms.phase === "noise" ? lv(v) * 100 : 0}%`;
+      r.classList.toggle("off", busy && ms.levels && v == null);
+    });
     $(".sk-s-sec").textContent = busy ? `${ms.seconds.toFixed(1)} / ${ms.limit} s` : ms.raw ? `${ms.raw.toFixed(1)} s` : "";
-    $(".sk-s-from").textContent = !ms.available ? SL.noMic : ms.rawFrom && ms.rawFrom !== "mic" ? SL.from(ms.rawFrom) : "";
-    $(".sk-s-from").classList.toggle("warn", !ms.available);
+    $(".sk-s-from").textContent = !ms.available ? SL.noMic : ms.rawFrom && ms.rawFrom !== "rec" ? SL.from(ms.rawFrom) : (ms.notes || []).join(" / ");
+    $(".sk-s-from").classList.toggle("warn", !ms.available || (ms.rawFrom === "rec" && !!ms.notes?.length));
     el.querySelector('.sk-step[data-s="1"]').classList.toggle("done", !!n);
     el.querySelector('.sk-step[data-s="2"]').classList.toggle("done", !!ms.raw && !busy);
   }
@@ -250,9 +279,18 @@ export function createSampler(host) {
     if (el.hidden) return;
     const $ = (q) => el.querySelector(q);
     const has = !!res;
+    const src = ms?.rawFrom === "rec" ? ms.sources || {} : null;
+    $(".sk-s-srcrow").hidden = !src;
+    el.querySelectorAll(".sk-s-src button").forEach((b) => {
+      const v = b.dataset.v;
+      b.setAttribute("aria-checked", String(opts.source === v));
+      b.disabled = !src || (v === "both" ? src.mic == null || src.pc == null : src[v] == null);
+      const db = src && v !== "both" ? src[v] : null;
+      b.title = db == null ? "" : db <= -89 ? SL.srcNone : `${db} dB`;
+    });
     el.querySelectorAll(".sk-tog").forEach((b) => {
       b.setAttribute("aria-pressed", String(!!opts[b.dataset.k]));
-      if (b.dataset.k === "denoise") b.disabled = !ms?.noise || ms.noise.zero;
+      if (b.dataset.k === "denoise") b.disabled = !ms?.noise || ms.noise.zero || opts.source === "pc";   // 雑音を引くのはマイクだけ
     });
     $(".sk-s-play").disabled = !has;
     $(".sk-s-save").disabled = !has;

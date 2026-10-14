@@ -1,6 +1,7 @@
 """mic.py — 短い音をマイクで録る（別スレッド・メモリの中だけ）。api.py から使う。
 
-・soundcard（BSD-3-Clause）で Windows の WASAPI から、既定のマイクを 1ch で録る
+・soundcard（BSD-3-Clause）で Windows の WASAPI から、既定のマイクと PC の音（ループバック）を同時に・別々に録る
+  （電話越しの声・動画の環境音など、PC で鳴っている音も楽器の元にできる。どちらを使うかは録ったあとで選ぶ）
 ・WASAPI は COM を使う。録るスレッドの中で COM を始める
   順番に注意: soundcard は読み込むときに自分で CoInitializeEx し、「もう始まっている（S_FALSE）」を
   エラー 0x100000001 として投げる。だから soundcard を先に読み込み、そのあとで com_thread() に入る
@@ -16,8 +17,9 @@ import threading
 from pathlib import Path
 
 RATE = 48000
-BLOCK = RATE // 20          # 1 回に読む長さ（0.05 秒。レベルの表示を細かくする）
-BUFFER = RATE // 2          # WASAPI の受け皿（0.5 秒）
+BLOCK = RATE // 10          # 1 回に読む長さ（0.1 秒）
+BUFFER = RATE // 2          # WASAPI の受け皿（0.5 秒）。2 つの入口を順に読むので、待っている間にあふれない大きさにする
+SOURCES = ("mic", "pc")
 FLOOR_DB = -90.0
 
 
@@ -130,21 +132,25 @@ def db(x) -> float:
 
 
 class Capture:
-    """1 回分の短い録音。start() で別スレッドが動き、seconds 秒たつか stop() で止まる。音はメモリに持つ。"""
+    """1 回分の短い録音。start() で別スレッドが動き、seconds 秒たつか stop() で止まる。音はメモリに持つ。
+    マイク（mic）と PC の音（pc）を同じ長さで別々に持つ。片方が開けなければ、もう片方だけで録る。"""
 
-    def __init__(self, seconds: float, backend=None):
+    def __init__(self, seconds: float, backend=None, want_pc: bool = True):
         self.limit = float(seconds)
+        self.want_pc = want_pc
         self.frames = 0
-        self.level = FLOOR_DB
+        self.levels = {s: FLOOR_DB for s in SOURCES}
+        self.opened: dict[str, bool] = {s: False for s in SOURCES}
+        self.notes: list[str] = []          # 片方だけ開けなかった理由（録音は続ける）
         self.error = ""
-        self._chunks: list = []
+        self._chunks: dict[str, list] = {s: [] for s in SOURCES}
         self._backend = backend
         self._stop = threading.Event()
         self._ready = threading.Event()
         self._thread = threading.Thread(target=self._run, name="sketch-mic", daemon=True)
 
     def start(self, wait: float = 8.0) -> None:
-        """録り始める。マイクを開けなかったときはここで MicError。"""
+        """録り始める。どちらも開けなかったときはここで MicError。"""
         self._thread.start()
         self._ready.wait(wait)
         if self.error and not self.frames:
@@ -163,28 +169,56 @@ class Capture:
     def seconds(self) -> float:
         return self.frames / RATE
 
-    def audio(self):
-        """録れた音（RATE の 1ch・float32）。"""
+    def audio(self, source: str = "mic"):
+        """録れた音（RATE の 1ch・float32）。開けなかった入口は None。"""
         import numpy as np
-        return np.concatenate(self._chunks) if self._chunks else np.zeros(0, np.float32)
+        if not self.opened.get(source):
+            return None
+        ch = self._chunks[source]
+        return np.concatenate(ch) if ch else np.zeros(0, np.float32)
+
+    def _open(self, sc, stack) -> dict:
+        recs = {}
+        try:
+            mic = sc.default_microphone()
+            if mic is None:
+                raise MicError("マイクが見つかりません")
+            recs["mic"] = stack.enter_context(mic.recorder(samplerate=RATE, channels=1, blocksize=BUFFER))
+        except Exception as e:  # noqa: BLE001
+            self.notes.append(f"マイク: {e if isinstance(e, MicError) else describe(e) + privacy_hint(e)}")
+        if self.want_pc:
+            try:
+                spk = sc.default_speaker()
+                if spk is None:
+                    raise MicError("PC の音の出口（スピーカー・ヘッドホン）が見つかりません")
+                loop = sc.get_microphone(str(spk.id), include_loopback=True)
+                recs["pc"] = stack.enter_context(loop.recorder(samplerate=RATE, channels=2, blocksize=BUFFER))
+            except Exception as e:  # noqa: BLE001
+                self.notes.append(f"PC の音: {e if isinstance(e, MicError) else describe(e)}")
+        if not recs:
+            raise MicError("録れる入口がありません（" + " / ".join(self.notes) + "）")
+        return recs
 
     def _run(self) -> None:
         import numpy as np
         try:
             sc = self._backend or load_backend()     # 先に読み込む（com_thread より後だと 0x100000001 になる）
-            with com_thread():
-                mic = sc.default_microphone()
-                if mic is None:
-                    raise MicError("マイクが見つかりません（Windows の設定 → サウンド → 入力 を確かめてください）")
-                with mic.recorder(samplerate=RATE, channels=1, blocksize=BUFFER) as r:
-                    self._ready.set()
-                    end = int(self.limit * RATE)
-                    while not self._stop.is_set() and self.frames < end:
+            with com_thread(), contextlib.ExitStack() as stack:
+                recs = self._open(sc, stack)
+                for s in recs:
+                    self.opened[s] = True
+                self._ready.set()
+                end = int(self.limit * RATE)
+                while not self._stop.is_set() and self.frames < end:
+                    got = {}
+                    for s, r in recs.items():
                         x = np.asarray(r.record(numframes=BLOCK), dtype=np.float32)
-                        x = x.reshape(len(x), -1)[:, 0][: end - self.frames]
-                        self._chunks.append(x.copy())
-                        self.level = db(x)
-                        self.frames += len(x)
+                        got[s] = x.reshape(len(x), -1).mean(axis=1)        # PC の音（左右）は 1 本に
+                    n = min(min(len(x) for x in got.values()), end - self.frames)
+                    for s, x in got.items():
+                        self._chunks[s].append(x[:n].copy())
+                        self.levels[s] = db(x[:n])
+                    self.frames += n
         except MicError as e:
             self.error = str(e)
         except Exception as e:  # noqa: BLE001

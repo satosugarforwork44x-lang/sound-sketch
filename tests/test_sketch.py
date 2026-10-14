@@ -124,6 +124,11 @@ class SketchTest(unittest.TestCase):
         self.assertLessEqual(r["duration"], 1.0)
         self.assertEqual(r["root"], "D6")            # 1200 Hz ≒ D6
         self.assertTrue(self.api.blob_path(r["key"]).exists())
+        self.assertIsNotNone(st["sources"]["pc"])            # PC の音も同時に録れている
+        pc = self.api.sample_process({"source": "pc"})
+        self.assertEqual(pc["root"], "A4")                    # 電話越しの声など（440 Hz）
+        both = self.api.sample_process({"source": "both"})
+        self.assertGreater(both["duration"], 0.5)
         saved = self.api.sample_save("glass", {"length": 1.0}, r["root"])
         self.assertEqual(saved["file"], "glass.wav")
         self.assertEqual(self.api.sample_save("glass", {}, "D6")["file"], "glass (2).wav")   # 上書きしない
@@ -150,6 +155,29 @@ class SketchTest(unittest.TestCase):
         self.assertEqual(len(self.api.export_wav("v", 1)["warnings"]), 2)   # 消えた音は内蔵の音に戻して書き出す
         with self.assertRaises(self.api.SketchError):
             self.api.blob_path(f"s-melody-0-1-{s['b64']}.wav")
+
+    def test_pc_only_when_no_mic(self):
+        if not self.api.state()["numpy"]:
+            self.skipTest("numpy なし")
+        import sys, time
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        from fake_mic import FakeSoundcard
+        self.api.mic_backend = FakeSoundcard(speed=8, has_mic=False)
+        with self.assertRaises(self.api.SketchError):
+            self.api.noise_start()                           # 雑音を測るのはマイクだけ
+        self.api.rec_start()
+        time.sleep(0.2)
+        self.api.rec_stop()
+        for _ in range(100):
+            st = self.api.mic_state()
+            if st["phase"] == "idle":
+                break
+            time.sleep(0.02)
+        self.assertIsNone(st["sources"]["mic"])
+        self.assertTrue(st["notes"])                          # マイクが無いことを知らせる
+        with self.assertRaises(self.api.SketchError):
+            self.api.sample_process({"source": "mic"})
+        self.assertEqual(self.api.sample_process({"source": "pc"})["root"], "A4")
 
     def test_pitch_detection(self):
         if not self.api.state()["numpy"]:

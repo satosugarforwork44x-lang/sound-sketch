@@ -7,7 +7,7 @@
 An extension app for **[Hub](https://github.com/satosugarforwork44x-lang/desktop-hub)**, the slim bar on the edge of your Windows desktop.
 Sketch a few bars of drums, bass, chords and melody **from your computer keyboard**, let **Claude** rewrite them as data,
 and export a WAV to hand to an AI music tool such as **Suno** — without ever opening a DAW.
-Tap a glass, record it, and it becomes an instrument you can play on the keys.
+Tap a glass — or catch a voice on a call or a sound from your own video — and it becomes an instrument you can play on the keys.
 
 ![Sound Sketch — drums, bass, chords and melody, with the mini keyboard at the bottom](docs/sketch.png)
 
@@ -44,7 +44,7 @@ The layout went through several rounds of real use. The table shows what was cho
 | **Chords snap to half bars** | One chord per bar is the most common, two per bar the next. Clicking the first half of a bar fills the whole bar; clicking the second half splits it. No more chords stuck on the 4th beat |
 | **Easy to erase** | Right-click deletes a cell, note or chord. Notes are hit even if you miss by one row. The 🗑 next to each part clears it. Lanes grow with the window, so rows are easier to hit |
 | **A reference track** | Hum, sing or record something (e.g. with Hub's Rec Sketch, which can remove room noise) and drop the WAV on the panel. It loops with the sketch, so you can play along with your own voice. Drag the waveform to line up the start; double-click jumps to where the sound begins. It is mixed into the exported WAV too |
-| **Your own sounds, in four steps** | Tap a glass, clap, knock or say "pa" into the mic, and play it on the keys or a drum pad. The steps are laid out as 1 → 4 (measure the room, record, shape, use) so there is nothing to learn. Silence is cut, the volume evened out and room noise removed automatically; the **pitch is detected** so the keys play in tune (tuned sounds via YIN, struck sounds like glass via their strongest tone — fix it by ear with ‹ ›). Built in, so it works without Hub's Rec Sketch |
+| **Your own sounds, in four steps** | Tap a glass, clap, knock or say "pa" into the mic, and play it on the keys or a drum pad. The steps are laid out as 1 → 4 (measure the room, record, shape, use) so there is nothing to learn. Silence is cut, the volume evened out and room noise removed automatically; the **pitch is detected** so the keys play in tune (tuned sounds via YIN, struck sounds like glass via their strongest tone — fix it by ear with ‹ ›). The **mic and the PC's sound are recorded separately** (like Rec Sketch), so a voice on a call or the ambience of your own video can be used too — pick Mic / PC sound / Both afterwards. Built in, so it works without Hub's Rec Sketch |
 | **You can always see what is playing** | The row of the note you press glows; during playback, sounding notes and chords are outlined |
 | **Nothing is lost** | `Ctrl+Z` undo. WAV export never overwrites (`name (2).wav`). Edits made outside (by Claude) are picked up automatically |
 | **Remappable keys** | Keys are stored by physical position (`KeyboardEvent.code`), so JIS and US keyboards behave the same. A numpad preset is included |
@@ -130,7 +130,7 @@ The panel notices the change within about a second. Claude never writes audio co
 | `manifest.json` | Hub module definition (`moduleApi 1`): panel, tile icon, exported functions, `/blob/sketch/…` for audio |
 | `api.py` | Saves and validates sketches (anything unreadable is skipped with a warning), atomic writes, WAV export without overwriting, key-map storage |
 | `synth.py` | The numpy sound engine: drums, bass, pad and lead voices, chord/note parsing, mixdown |
-| `mic.py` | Records a short sound from the default mic in a thread (soundcard / WASAPI, kept in memory) |
+| `mic.py` | Records a short sound in a thread — the default mic and the PC's sound (loopback) side by side (soundcard / WASAPI, kept in memory) |
 | `sampler.py` | Shapes a recording: spectral noise subtraction, silence trimming, length and fade, volume, pitch detection (YIN + strongest-tone fallback) |
 | `ui/panel.js` | The panel: canvas lanes, mini keyboard, recording, scheduling with Web Audio, key handling |
 | `ui/sampler.js` | The "Make a sound" screen (4 steps, waveform, pitch, sound assignments) |

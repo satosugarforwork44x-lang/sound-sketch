@@ -1185,6 +1185,7 @@ export async function mount(el, ctx) {
   root.append(smpEl);
   const smp = createSampler({
     ctx, el: smpEl,
+    stopPlayback: () => setPlaying(false),
     play: (key) => { audio(); load(key).then(() => sound(key, ac.currentTime, null, 1)).catch((e) => ctx.toast(e.message, "error")); },
     sketch: () => sk,
     samples: () => st?.samples || [],

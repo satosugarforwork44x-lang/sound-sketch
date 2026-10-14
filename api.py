@@ -393,8 +393,10 @@ _cap = None                 # 録っている途中（mic.Capture）
 _cap_kind = ""              # "noise"（部屋の雑音を測る）/ "rec"（音を録る）
 _cap_error = ""
 _noise = None               # 部屋の雑音（周波数ごとの大きさ）。data_dir/noise.npy にも残す
-_raw = None                 # 整える前の音（SR の 1ch）
-_raw_from = ""              # "mic" か、読み込んだ WAV の名前
+_raw: dict = {}             # 整える前の音（SR の 1ch）: {"mic": …, "pc": …}。読み込んだ WAV は "mic" の所に入れる
+_raw_from = ""              # "rec"（録音）か、読み込んだ WAV の名前
+_notes: list[str] = []      # 片方の入口だけ開けなかった理由
+SOURCES = ("mic", "pc", "both")
 _preview_n = 0
 mic_backend = None          # 確かめ用に、soundcard の代わりを差し込める
 
@@ -430,7 +432,7 @@ def _load_noise():
 
 def _finish() -> None:
     """録り終わった音を受け取る（雑音なら周波数ごとの大きさにして残す）。"""
-    global _cap, _cap_kind, _cap_error, _noise, _raw, _raw_from
+    global _cap, _cap_kind, _cap_error, _noise, _raw, _raw_from, _notes
     cap = _cap
     if cap is None or cap.running:
         return
@@ -440,7 +442,16 @@ def _finish() -> None:
     if cap.error and not cap.frames:
         return
     smp = _sampler()
-    x = smp.resample(cap.audio(), _mod("mic").RATE)
+    rate = _mod("mic").RATE
+    if kind == "rec":
+        _raw = {s: smp.resample(cap.audio(s), rate) for s in ("mic", "pc") if cap.audio(s) is not None}
+        _raw_from, _notes = "rec", list(cap.notes)
+        return
+    x = cap.audio("mic")
+    if x is None:
+        _cap_error = "雑音を測るにはマイクが必要です（" + " / ".join(cap.notes) + "）"
+        return
+    x = smp.resample(x, rate)
     if kind == "noise":
         try:
             prof = smp.noise_profile(x)
@@ -451,8 +462,10 @@ def _finish() -> None:
         Path(_ctx.data_dir).mkdir(parents=True, exist_ok=True)
         _synth.np.save(_noise_file(), prof)
         _ctx.store.set("sketch", "noise", {"db": _mod("mic").db(x), "zero": bool(not _synth.np.any(x)), "at": time.time()})
-    else:
-        _raw, _raw_from = x, "mic"
+
+
+def _peak_db(x) -> float | None:
+    return None if x is None else _mod("mic").db(x)
 
 
 def mic_state() -> dict:
@@ -468,11 +481,14 @@ def mic_state() -> dict:
             "phase": _cap_kind if cap else "idle",
             "seconds": round(cap.seconds, 2) if cap else 0.0,
             "limit": cap.limit if cap else REC_MAX_SEC,
-            "level": cap.level if cap else None,
+            "levels": ({s: (cap.levels[s] if cap.opened[s] else None) for s in ("mic", "pc")} if cap else None),
             "error": _cap_error,
             "noise": meta,
-            "raw": round(len(_raw) / _synth.SR, 2) if _raw is not None and _synth else None,
+            "raw": round(max(len(x) for x in _raw.values()) / _synth.SR, 2) if _raw else None,
             "rawFrom": _raw_from,
+            # 録れた音の大きさ（dB）。画面は、マイクがほぼ無音で PC の音があれば「PC の音」を選んでおく
+            "sources": {s: _peak_db(_raw.get(s)) for s in ("mic", "pc")} if _raw else None,
+            "notes": _notes if _raw_from == "rec" else [],
         }
 
 
@@ -484,7 +500,7 @@ def _start(kind: str, seconds: float) -> dict:
         _finish()
         if _cap is not None:
             raise SketchError("いま録っています")
-        cap = mic.Capture(seconds, backend=mic_backend)
+        cap = mic.Capture(seconds, backend=mic_backend, want_pc=kind == "rec")
         try:
             cap.start()
         except mic.MicError as e:
@@ -507,7 +523,7 @@ def noise_clear() -> dict:
 
 
 def rec_start() -> dict:
-    """短い音を録る（最長 8 秒。止めるまで）。"""
+    """短い音を録る（最長 8 秒。止めるまで）。マイクと PC の音を同時に・別々に録り、どちらを使うかは整えるときに選ぶ。"""
     return _start("rec", REC_MAX_SEC)
 
 
@@ -520,7 +536,7 @@ def rec_stop() -> dict:
 
 def sample_load(path: str) -> dict:
     """マイクの代わりに、WAV ファイルを整える元にする（最初の 8 秒まで）。"""
-    global _raw, _raw_from
+    global _raw, _raw_from, _notes
     s = _need_synth()
     src = Path(str(path))
     if not src.is_file() or src.suffix.lower() != ".wav":
@@ -529,20 +545,40 @@ def sample_load(path: str) -> dict:
         x = s.read_wav_mono(src)
     except Exception as e:
         raise SketchError(f"{src.name} を読めません（16 / 24 / 32 bit の PCM の WAV だけ）: {e}")
-    _raw, _raw_from = x[: int(REC_MAX_SEC * s.SR)].astype(float), src.name
+    _raw, _raw_from, _notes = {"mic": x[: int(REC_MAX_SEC * s.SR)].astype(float)}, src.name, []
     return mic_state()
 
 
 def _opts(opts: dict | None) -> dict:
     o = opts if isinstance(opts, dict) else {}
-    return {"denoise": bool(o.get("denoise", True)), "trim": bool(o.get("trim", True)),
+    src = o.get("source") if o.get("source") in SOURCES else "mic"
+    return {"source": src, "denoise": bool(o.get("denoise", True)), "trim": bool(o.get("trim", True)),
             "normalize": bool(o.get("normalize", True)), "length": _num(o.get("length"), 0.1, 4.0, 1.5)}
 
 
 def _processed(opts: dict | None):
-    if _raw is None:
+    if not _raw:
         raise SketchError("まだ音がありません。録音するか、WAV を落としてください")
-    x, pitch = _sampler().process(_raw, _load_noise(), _opts(opts))
+    o = _opts(opts)
+    smp = _sampler()
+    noise = _load_noise() if o["denoise"] else None
+    mic = _raw.get("mic")
+    if mic is not None and noise is not None:          # 部屋の雑音を引くのはマイクだけ（PC の音には部屋の雑音が乗らない）
+        mic = smp.denoise(mic, noise)
+    pc = _raw.get("pc")
+    match o["source"]:
+        case "pc":
+            if pc is None:
+                raise SketchError("PC の音は録れていません")
+            x = pc
+        case "both" if mic is not None and pc is not None:
+            n = min(len(mic), len(pc))
+            x = mic[:n] + pc[:n]
+        case _:
+            if mic is None:
+                raise SketchError("マイクの音は録れていません")
+            x = mic
+    x, pitch = smp.process(x, None, {**o, "denoise": False})
     if not len(x):
         raise SketchError("音が小さすぎて、何も残りませんでした。もう少し近くで録ってみてください")
     return x, pitch
