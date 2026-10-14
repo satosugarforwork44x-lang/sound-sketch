@@ -136,3 +136,8 @@
 .sk-clear { display: grid; place-items: center; width: 22px; height: 18px; padding: 0; border: 0; border-radius: 4px; background: transparent; color: var(--faint); cursor: pointer; }
 .sk-clear:hover { color: var(--danger); background: var(--ink-3); }
 .sk-clear .icon { width: 13px; height: 13px; }
+.sk-lab-ref .sk-lab-name { cursor: default; }
+.sk-ref-file { min-width: 0; flex: 1; display: flex; justify-content: flex-end; }
+.sk-ref-file .select { height: 22px; max-width: 104px; padding: 0 4px 0 8px; font-size: 11px; }
+.sk-ref-file .select-value { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sk-lab-ctl button:disabled, .sk-lab-ctl input:disabled { opacity: .35; cursor: default; }

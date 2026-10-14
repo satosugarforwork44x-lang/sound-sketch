@@ -165,8 +165,63 @@ def chord_midis(name: str, octave: int = 3) -> list[int]:
 
 
 # ---------- ミックス・書き出し ----------
-def render(sketch: dict, repeat: int = 1) -> np.ndarray:
-    """正規化済みのスケッチ（api.normalize の結果）を、1 本の波形にする。"""
+# ---------- 参考の音（録音などの WAV） ----------
+def _pcm_to_float(raw: bytes, width: int, channels: int) -> np.ndarray:
+    """PCM のバイト列を -1〜1 の 1ch にする（2ch 以上は平均）。"""
+    match width:
+        case 1:
+            x = (np.frombuffer(raw, np.uint8).astype(np.float32) - 128) / 128
+        case 2:
+            x = np.frombuffer(raw, "<i2").astype(np.float32) / 32768
+        case 3:
+            b = np.frombuffer(raw, np.uint8).reshape(-1, 3).astype(np.int32)
+            v = b[:, 0] | (b[:, 1] << 8) | (b[:, 2] << 16)
+            x = (np.where(v & 0x800000, v - 0x1000000, v)).astype(np.float32) / 8388608
+        case 4:
+            x = np.frombuffer(raw, "<i4").astype(np.float32) / 2147483648
+        case _:
+            raise ValueError(f"{width * 8} bit の WAV は読めない")
+    return x.reshape(-1, channels).mean(axis=1) if channels > 1 else x
+
+
+def wav_info(path: Path, bin_sec: float = 0.01, max_bins: int = 20000) -> dict:
+    """参考の音の長さ・音の出だし・波形の形（区切りごとの最大値）。長い録音でも少しずつ読む。"""
+    with wave.open(str(path), "rb") as w:
+        rate, ch, width, n = w.getframerate(), w.getnchannels(), w.getsampwidth(), w.getnframes()
+        dur = n / rate if rate else 0.0
+        bin_sec = max(bin_sec, dur / max_bins) if dur else bin_sec
+        per = max(1, int(rate * bin_sec))
+        peaks: list[float] = []
+        while True:
+            raw = w.readframes(per * 200)
+            if not raw:
+                break
+            x = np.abs(_pcm_to_float(raw, width, ch))
+            k = len(x) // per
+            if k:
+                peaks += x[: k * per].reshape(k, per).max(axis=1).tolist()
+            if len(x) % per:
+                peaks.append(float(x[k * per:].max()))
+    top = max(peaks) if peaks else 0.0
+    onset = next((i * bin_sec for i, v in enumerate(peaks) if top and v > top * 0.1), 0.0)
+    return {"duration": round(dur, 3), "rate": rate, "onset": round(onset, 3), "binSec": bin_sec,
+            "peaks": [round(v / top, 3) if top else 0.0 for v in peaks]}
+
+
+def read_wav_mono(path: Path) -> np.ndarray:
+    """WAV を SR（44.1 kHz）の 1ch にする（書き出しで混ぜるため）。"""
+    with wave.open(str(path), "rb") as w:
+        rate, ch, width = w.getframerate(), w.getnchannels(), w.getsampwidth()
+        x = _pcm_to_float(w.readframes(w.getnframes()), width, ch)
+    if rate != SR and len(x):
+        t = np.arange(int(len(x) * SR / rate)) * (rate / SR)
+        x = np.interp(t, np.arange(len(x)), x).astype(np.float32)
+    return x
+
+
+def render(sketch: dict, repeat: int = 1, ref: np.ndarray | None = None) -> np.ndarray:
+    """正規化済みのスケッチ（api.normalize の結果）を、1 本の波形にする。
+    ref（参考の音を SR の 1ch にしたもの）があれば、スケッチの頭から offset 秒の所を、繰り返しごとに重ねる。"""
     steps = 16 * sketch["bars"]
     step_sec = 60.0 / sketch["bpm"] / 4
     total = steps * step_sec * repeat
@@ -186,8 +241,12 @@ def render(sketch: dict, repeat: int = 1) -> np.ndarray:
         if k not in cache:
             cache[k] = voice(kind, midi, steps_len * step_sec)
         return cache[k]
+    rinfo = sketch.get("ref")
     for r in range(repeat):
         off = r * steps * step_sec
+        if ref is not None and rinfo and not rinfo["mute"]:
+            i0 = int(rinfo["offset"] * SR)
+            add(ref[i0: i0 + int(steps * step_sec * SR)], off, rinfo["vol"])
         if not mix["drums"]["mute"]:
             for d in DRUMS:
                 pat = sketch["drums"][d]

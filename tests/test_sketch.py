@@ -63,6 +63,35 @@ class SketchTest(unittest.TestCase):
             self.assertEqual(w.getframerate(), 44100)
             self.assertGreater(w.getnframes(), 44100)
 
+    def _write_wav(self, path, sec=3.0, rate=48000, start=0.5):
+        import numpy as np
+        t = np.arange(int(sec * rate)) / rate
+        x = np.where(t >= start, 0.5 * np.sin(2 * np.pi * 220 * t), 0.0)
+        with wave.open(str(path), "wb") as w:
+            w.setnchannels(1); w.setsampwidth(2); w.setframerate(rate)
+            w.writeframes((x * 32767).astype("<i2").tobytes())
+
+    def test_reference_audio(self):
+        if not self.api.state()["numpy"]:
+            self.skipTest("numpy なし")
+        outside = self.tmp / "rec-test (clean).wav"
+        self._write_wav(outside)
+        got = self.api.import_audio(str(outside))
+        self.assertEqual(got["file"], "rec-test (clean).wav")
+        self.assertIn("rec-test (clean).wav", self.api.state()["audio"])
+        info = self.api.ref_info(got["file"])
+        self.assertAlmostEqual(info["onset"], 0.5, delta=0.05)          # 無音の後の出だしを見つける
+        self.assertTrue(self.api.blob_path(info["key"]).samefile(self.tmp / "Sketch" / got["file"]))
+        sk = self.api.new_sketch("r")["sketch"]
+        sk["ref"] = {"file": got["file"], "offset": info["onset"], "vol": 0.8, "mute": False}
+        self.api.save_sketch("r", sk)
+        self.assertEqual(self.api.open_sketch("r")["sketch"]["ref"]["file"], got["file"])
+        a = self.api.export_wav("r", 1)
+        with wave.open(a["path"]) as w:
+            self.assertGreater(w.getnframes(), 44100)
+        with self.assertRaises(self.api.SketchError):
+            self.api.blob_path("a-" + "Li4vLi4vYm9vdC5pbmk" + ".wav")       # ../../boot.ini は渡さない
+
 
 if __name__ == "__main__":
     unittest.main()

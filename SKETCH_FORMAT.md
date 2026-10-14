@@ -17,6 +17,7 @@ Hub renders the audio itself (numpy) — **do not write audio code; edit the JSO
   "bass":   [ {"at": 0, "note": "C2", "len": 4} ],
   "chords": [ {"at": 0, "name": "Cm", "len": 16}, {"at": 16, "name": "Ab", "len": 16} ],
   "melody": [ {"at": 0, "note": "G4", "len": 2} ],
+  "ref":    {"file": "rec-hum (clean).wav", "offset": 0.7, "vol": 0.8, "mute": false},
   "mix": {"drums": {"vol": 0.8, "mute": false}, "bass": {"vol": 0.8, "mute": false},
           "chords": {"vol": 0.8, "mute": false}, "melody": {"vol": 0.8, "mute": false}}
 }
@@ -31,9 +32,11 @@ Hub renders the audio itself (numpy) — **do not write audio code; edit the JSO
 | `drums.*` | one character per step: `x` hit, `X` accented hit, `.` rest. `|` and spaces are ignored (use `|` between bars) |
 | `bass` / `melody` | notes: `at` = start step (0-based), `note` = name with octave (`C4` = middle C, `F#3`, `Bb2`), `len` = steps |
 | `chords` | `name`: C, Cm, C7, Cmaj7, Cm7, Cdim, Caug, Csus2, Csus4, C6, Cm6, Cadd9, C9, Cm7b5, Cdim7 (slash bass like `C/E` is accepted but ignored) |
+| `ref` | optional reference audio: a `.wav` **in this folder** (name only) that plays along with the sketch. `offset` = seconds into the WAV that line up with step 0. Included in the exported WAV unless `mute`. Use `null` (or leave it out) for none |
 | `mix` | per part: `vol` 0–1, `mute` true/false |
 
 Notes for editing:
 - Typical ranges: bass C1–C3, chords are voiced from octave 3 automatically, melody C4–C6.
 - Anything that cannot be read is skipped and shown to the user as a warning (the rest still plays).
+- Keep `ref` as it is unless asked (it points to the user's recording).
 - Write the whole file (e.g. `folders_write_text` with `overwrite: true`). Keep `"format": "hub-sketch/1"`.

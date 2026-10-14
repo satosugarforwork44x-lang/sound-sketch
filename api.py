@@ -7,8 +7,10 @@
 """
 from __future__ import annotations
 
+import base64
 import importlib.util
 import json
+import shutil
 import os
 import re
 import tempfile
@@ -28,6 +30,7 @@ PARTS = ("drums", "bass", "chords", "melody")
 DRUM_NAMES = ("kick", "snare", "hat", "clap")
 NAME_RE = re.compile(r"^[^\\/:*?\"<>|\x00-\x1f]{1,80}$")
 BLOB_RE = re.compile(r"^(?:d-(kick|snare|hat|clap)|v-(bass|pad|lead)-(\d{1,3}))\.wav$")
+REF_RE = re.compile(r"^a-([A-Za-z0-9_-]{1,400})\.wav$")          # 参考の音: a-<名前を base64url にしたもの>.wav
 
 
 class SketchError(Exception):
@@ -185,6 +188,16 @@ def normalize(raw: dict) -> tuple[dict, list[str]]:
     out["chords"] = sorted(chords, key=lambda x: x["at"])
 
     mix = raw.get("mix") if isinstance(raw.get("mix"), dict) else {}
+    # 参考の音（保存先フォルダの WAV。任意）
+    ref = raw.get("ref")
+    out["ref"] = None
+    if isinstance(ref, dict) and isinstance(ref.get("file"), str):
+        f = ref["file"].strip()
+        if f.lower().endswith(".wav") and NAME_RE.match(f):
+            out["ref"] = {"file": f, "offset": round(_num(ref.get("offset"), 0, 3600, 0.0), 3),
+                          "vol": round(_num(ref.get("vol"), 0, 1, 0.8), 3), "mute": bool(ref.get("mute", False))}
+        else:
+            warn.append(f"ref.file は保存先フォルダの .wav の名前だけ（{f}）")
     out["mix"] = {}
     for p in PARTS:
         m = mix.get(p) if isinstance(mix.get(p), dict) else {}
@@ -197,8 +210,49 @@ def state() -> dict:
     f = _folder()
     files = sorted(p.name[: -len(EXT)] for p in f.glob(f"*{EXT}")) if f else []
     cur = _ctx.store.get("sketch", "current", None)
-    return {"folder": str(f) if f else None, "files": files, "current": cur if cur in files else None,
+    return {"folder": str(f) if f else None, "files": files, "current": cur if cur in files else None, "audio": _audio(),
             "numpy": _synth is not None and _synth.np is not None, "numpyError": _synth_error}
+
+
+def _audio() -> list[str]:
+    """保存先フォルダの WAV（参考の音の候補）。新しい順。"""
+    f = _folder()
+    if not f:
+        return []
+    return [p.name for p in sorted(f.glob("*.wav"), key=lambda p: p.stat().st_mtime, reverse=True)]
+
+
+def _wav(name: str) -> Path:
+    if not isinstance(name, str) or not NAME_RE.match(name) or not name.lower().endswith(".wav"):
+        raise SketchError(f"WAV の名前が正しくありません: {name}")
+    p = _need_folder() / name
+    if not p.is_file():
+        raise SketchError(f"保存先フォルダに {name} がありません")
+    return p
+
+
+def ref_info(file: str) -> dict:
+    """参考の音の長さ・出だし・波形（画面に描く用）と、鳴らすための /blob のキー。"""
+    s = _need_synth()
+    try:
+        info = s.wav_info(_wav(file))
+    except Exception as e:   # wave.Error・ValueError（32 bit float など）
+        raise SketchError(f"{file} を読めません（16 / 24 / 32 bit の PCM の WAV だけ）: {e}")
+    info["key"] = "a-" + base64.urlsafe_b64encode(file.encode("utf-8")).decode("ascii").rstrip("=") + ".wav"
+    return info
+
+
+def import_audio(path: str) -> dict:
+    """パネルに落とした WAV を、保存先フォルダに写す（上書きしない）。"""
+    src = Path(str(path))
+    if not src.is_file() or src.suffix.lower() != ".wav":
+        raise SketchError("WAV ファイルを落としてください")
+    folder = _need_folder()
+    if src.parent.resolve() == folder.resolve():
+        return {"file": src.name}
+    out = _unique(folder / src.name)
+    shutil.copy2(src, out)
+    return {"file": out.name}
 
 
 def open_sketch(name: str) -> dict:
@@ -234,6 +288,8 @@ def _dump(sketch: dict) -> str:
     for key in ("bass", "chords", "melody"):
         items = [json.dumps(x, ensure_ascii=False) for x in sketch[key]]
         lines.append(f'  "{key}": [' + ("" if not items else "\n    " + ",\n    ".join(items) + "\n  ") + "],")
+    if sketch.get("ref"):
+        lines.append('  "ref": ' + json.dumps(sketch["ref"], ensure_ascii=False) + ",")
     lines.append('  "mix": ' + json.dumps(sketch["mix"]))
     lines.append("}")
     return "\n".join(lines) + "\n"
@@ -249,7 +305,7 @@ def save_sketch(name: str, sketch: dict) -> dict:
 def poll(name: str) -> dict:
     """外（Claude やエディタ）で書き換えられたかを見るための更新時刻。"""
     p = _path(name)
-    return {"mtime": p.stat().st_mtime if p.exists() else None}
+    return {"mtime": p.stat().st_mtime if p.exists() else None, "audio": _audio()}
 
 
 def export_wav(name: str, repeat: int = 1) -> dict:
@@ -257,8 +313,15 @@ def export_wav(name: str, repeat: int = 1) -> dict:
     if repeat not in (1, 2, 4, 8):
         raise SketchError("繰り返しは 1・2・4・8 のどれか")
     data = open_sketch(name)
+    sk = data["sketch"]
+    ref = None
+    if sk.get("ref") and not sk["ref"]["mute"]:
+        try:
+            ref = s.read_wav_mono(_wav(sk["ref"]["file"]))
+        except Exception as e:
+            raise SketchError(f"参考の音 {sk['ref']['file']} を読めません: {e}（参考の音をミュートすれば書き出せます）")
     out = _unique(_need_folder() / f"{name}.wav")
-    s.write_wav(out, s.render(data["sketch"], repeat))
+    s.write_wav(out, s.render(sk, repeat, ref))
     return {"path": str(out), "file": out.name}
 
 
@@ -296,6 +359,13 @@ def keymap_import(file: str = "sketch-keymap.json") -> dict:
 def blob_path(key: str) -> Path:
     """パネルで鳴らす 1 音の WAV（/blob/sketch/<key>）。初めて頼まれたときに作って data_dir に置いておく。"""
     s = _need_synth()
+    r = REF_RE.match(str(key))
+    if r:   # 参考の音は、保存先フォルダの WAV をそのまま渡す
+        try:
+            name = base64.urlsafe_b64decode(r.group(1) + "=" * (-len(r.group(1)) % 4)).decode("utf-8")
+        except Exception:
+            raise SketchError("その音はありません")
+        return _wav(name)
     m = BLOB_RE.match(str(key))
     if not m:
         raise SketchError("その音はありません")

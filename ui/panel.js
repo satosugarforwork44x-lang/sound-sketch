@@ -28,7 +28,10 @@ const L = EN ? {
   warn: "Some parts were skipped",
   padDrums: "Drum pads", padPiano: (p) => `Piano — ${p}`, sharpChip: "♯", sharpChord: "7th",
   stepRec: "Rec (stopped): keys write at the cursor and move it on", liveRec: "Rec: notes are written while playing", noRec: "Press R (record) to write what you play",
-  triads: "Chords", sevenths: "7th chords", clearPart: (p) => `Clear ${p}`, cleared: (p) => `Cleared ${p} (Ctrl+Z to undo)`, clickTip: "Click a key to put it at the cursor (▼)", rhythm: "Rhythm presets", rhythmSet: (n) => `Set “${n}” (Ctrl+Z to undo)`, del: "Delete", placeChord: "Pick a chord for this spot",
+  triads: "Chords", sevenths: "7th chords", refLane: "Reference", refNone: "None",
+  refEmpty: "Drop a WAV here or pick one on the left — it plays along with the sketch (a recording, an exported song, …)",
+  refHelp: "Drag to line up the start · double-click = jump to where the sound begins", refRemove: "Remove the reference",
+  refMissing: (f) => `${f} is not in the sketch folder`, refAdded: (f) => `Added ${f} as the reference`, clearPart: (p) => `Clear ${p}`, cleared: (p) => `Cleared ${p} (Ctrl+Z to undo)`, clickTip: "Click a key to put it at the cursor (▼)", rhythm: "Rhythm presets", rhythmSet: (n) => `Set “${n}” (Ctrl+Z to undo)`, del: "Delete", placeChord: "Pick a chord for this spot",
 } : {
   dropFolder: "スケッチの保存先にするフォルダを、ここに落としてください",
   dropNote: "おすすめ: フォルダ窓のフォルダ（例: registries\\Sketch）を使い、Hub の設定で Claude に「読み書き」で共有すると、Claude がスケッチを直せます。",
@@ -51,7 +54,10 @@ const L = EN ? {
   warn: "読み飛ばした所があります",
   padDrums: "ドラムパッド", padPiano: (p) => `ピアノ — ${p}`, sharpChip: "♯（半音上げ）", sharpChord: "7th",
   stepRec: "録音待機（停止中）: 押した音がカーソルの位置に入り、カーソルが進みます", liveRec: "録音中: 再生しながら押した音が入ります", noRec: "R（録音）を押すと、弾いた音が入ります",
-  triads: "コード", sevenths: "7th のコード", clearPart: (p) => `${p}を全部消す`, cleared: (p) => `${p}を消しました（Ctrl+Z で戻せます）`, clickTip: "クリックすると、カーソル（▼）の位置に入ります", rhythm: "リズムのプリセット", rhythmSet: (n) => `「${n}」にしました（Ctrl+Z で戻せます）`, del: "消す", placeChord: "ここに置くコードを選んでください",
+  triads: "コード", sevenths: "7th のコード", refLane: "参考の音", refNone: "なし",
+  refEmpty: "WAV をここに落とすか、左で選ぶと、スケッチと一緒に鳴ります（録音・書き出した曲など）",
+  refHelp: "ドラッグで頭を合わせる ・ ダブルクリックで音の出だしに合わせる", refRemove: "参考の音を外す",
+  refMissing: (f) => `${f} が保存先フォルダにありません`, refAdded: (f) => `${f} を参考の音にしました`, clearPart: (p) => `${p}を全部消す`, cleared: (p) => `${p}を消しました（Ctrl+Z で戻せます）`, clickTip: "クリックすると、カーソル（▼）の位置に入ります", rhythm: "リズムのプリセット", rhythmSet: (n) => `「${n}」にしました（Ctrl+Z で戻せます）`, del: "消す", placeChord: "ここに置くコードを選んでください",
 };
 
 const PARTS = ["drums", "bass", "chords", "melody"];
@@ -73,7 +79,8 @@ const RHYTHMS = [
   { ja: "ファンク", en: "Funk", kick: "x..x..x...x.....", snare: "....x..x.x..x...", hat: "xxxxxxxxxxxxxxxx" },
   { ja: "空にする", en: "Clear", kick: "", snare: "", hat: "", clap: "" },
 ];
-const LANE = { head: 18, drums: 84, chords: 44, bass: 120, melody: 150, gap: 10 };   // bass / melody は窓の高さに合わせて伸ばす
+const LANE = { head: 18, drums: 84, chords: 44, bass: 120, melody: 150, ref: 56, gap: 10 };
+const LANES = ["drums", "bass", "chords", "melody", "ref"];        // ref = 参考の音（WAV）   // bass / melody は窓の高さに合わせて伸ばす
 const svg = (d) => `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
 const IC = {
   play: svg('<path d="M7 5v14l11-7z" fill="currentColor"/>'), stop: svg('<rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor"/>'),
@@ -134,6 +141,7 @@ export async function mount(el, ctx) {
     try {
       const r = await ctx.call("open_sketch", { name: n });
       name = r.name; sk = r.sketch; mtime = r.mtime;
+      loadRef();
       if (r.warnings?.length) ctx.toast(`${L.warn}: ${r.warnings[0]}${r.warnings.length > 1 ? ` (+${r.warnings.length - 1})` : ""}`, "error", 6000);
       else if (quiet) ctx.toast(L.reloaded);
       render();
@@ -154,14 +162,23 @@ export async function mount(el, ctx) {
   }
   ctx.onNativeDrop(async (paths) => {
     if (!paths?.length) return;
-    try { await save(); await ctx.call("set_folder", { path: paths[0] }); await refresh(); }
-    catch (e) { ctx.toast(e.message, "error"); }
+    try {
+      if (/\.wav$/i.test(paths[0]) && st?.folder && sk) {      // WAV は参考の音に（保存先フォルダに写す）
+        const r = await ctx.call("import_audio", { path: paths[0] });
+        st.audio = (await ctx.call("state")).audio;
+        await setRef(r.file);
+        ctx.toast(L.refAdded(r.file));
+        return;
+      }
+      await save(); await ctx.call("set_folder", { path: paths[0] }); await refresh();
+    } catch (e) { ctx.toast(e.message, "error"); }
   });
   // 外（Claude・エディタ）で書き換えられたら読み直す
   setInterval(async () => {
     if (!name || saving || saveTimer || document.hidden) return;
     try {
       const r = await ctx.call("poll", { name });
+      if (r.audio && JSON.stringify(r.audio) !== JSON.stringify(st.audio)) { st.audio = r.audio; buildLabels(); updateParts(); }
       if (r.mtime && mtime && Math.abs(r.mtime - mtime) > 1e-6 && !saving && !saveTimer) await open(name, true);
     } catch { /* フォルダが一時的に読めない等は次の回に */ }
   }, 1500);
@@ -169,8 +186,44 @@ export async function mount(el, ctx) {
   // ---------- 音 ----------
   let ac = null, master = null;
   const bufs = new Map(), loading = new Map();
+  // 参考の音は <audio> で流す（長い録音でもメモリに全部は読まない）。Web Audio の音量につなぐ
+  const refEl = new Audio();
+  refEl.preload = "auto";
+  let refGain = null, refInfo = null, refTimers = [];
+  function applyRefGain() { if (refGain) refGain.gain.value = sk?.ref && !sk.ref.mute ? sk.ref.vol : 0; }
+  async function loadRef() {
+    refInfo = null;
+    if (!sk?.ref) { refEl.removeAttribute("src"); refEl.load(); draw(); return; }
+    try {
+      refInfo = await ctx.call("ref_info", { file: sk.ref.file });
+      refEl.src = `/blob/sketch/${refInfo.key}?t=${encodeURIComponent(TOKEN)}`;
+    } catch (e) { ctx.toast(e.message, "error", 6000); }
+    applyRefGain(); draw();
+  }
+  async function setRef(file) {
+    changed(() => { sk.ref = file ? { file, offset: 0, vol: sk.ref?.vol ?? 0.8, mute: false } : null; });
+    await loadRef();
+    if (sk.ref && refInfo) { sk.ref.offset = refInfo.onset; draw(); }   // 頭の無音は飛ばして、音の出だしに合わせる
+    buildLabels(); updateParts();
+    if (playing) syncRef();
+  }
+  // 再生の頭（ループの頭）で、参考の音を offset 秒から鳴らし直す
+  function refAt(when) {
+    refTimers.push(setTimeout(() => {
+      if (!playing || !sk.ref || !refInfo) return;
+      try { refEl.currentTime = sk.ref.offset; refEl.play().catch(() => {}); } catch { /* 読み込み中 */ }
+    }, Math.max(0, (when - ac.currentTime) * 1000)));
+  }
+  function syncRef() {   // 今の位置に合わせる（再生中に頭をずらしたとき）
+    if (!playing || !sk.ref || !refInfo) return;
+    try { refEl.currentTime = sk.ref.offset + position() * stepSec(); refEl.play().catch(() => {}); } catch { /* 読み込み中 */ }
+  }
+  function stopRef() { refTimers.forEach(clearTimeout); refTimers = []; refEl.pause(); }
   function audio() {
-    if (!ac) { ac = new AudioContext(); master = ac.createGain(); master.gain.value = 0.9; master.connect(ac.destination); }
+    if (!ac) {
+      ac = new AudioContext(); master = ac.createGain(); master.gain.value = 0.9; master.connect(ac.destination);
+      refGain = ac.createGain(); ac.createMediaElementSource(refEl).connect(refGain).connect(master); applyRefGain();
+    }
     if (ac.state === "suspended") ac.resume();
     return ac;
   }
@@ -240,6 +293,7 @@ export async function mount(el, ctx) {
   }
   function tick() {
     while (nextTime < ac.currentTime + 0.12) {
+      if (nextStep === 0) { refTimers = refTimers.slice(-4); refAt(nextTime); }
       schedule(nextStep, nextTime);
       nextTime += stepSec();
       nextStep = (nextStep + 1) % steps();
@@ -254,7 +308,7 @@ export async function mount(el, ctx) {
       requestAnimationFrame(frame);
       updatePad();
     } else {
-      playing = false; clearInterval(timer);
+      playing = false; clearInterval(timer); stopRef();
       for (const h of held.values()) h.voice?.forEach((v) => v?.stop());
     }
     updateTransport(); updatePad(); draw();
@@ -397,7 +451,7 @@ export async function mount(el, ctx) {
     const prev = undo.pop();
     if (!prev) return;
     sk = JSON.parse(prev);
-    render();
+    render(); loadRef();
     clearTimeout(saveTimer); saveTimer = setTimeout(save, 200);
   }
   function selectPart(p) {
@@ -487,6 +541,10 @@ export async function mount(el, ctx) {
     const cv = $(".sk-cv");
     cv.addEventListener("pointerdown", onCanvas);
     cv.addEventListener("contextmenu", eraseAt);
+    cv.addEventListener("dblclick", (e) => {
+      const y = e.clientY - cv.getBoundingClientRect().top, rt = laneTop("ref");
+      if (y >= rt && y < rt + LANE.ref && sk.ref && refInfo) { changed(() => { sk.ref.offset = refInfo.onset; }); if (playing) syncRef(); }
+    });
     new ResizeObserver(() => { if (layoutLanes()) { buildLabels(); updateParts(); } else draw(); }).observe($(".sk-body"));
     layoutLanes();
     updateHead(); updateTransport(); updateParts(); updateHint(); buildPad();
@@ -501,10 +559,10 @@ export async function mount(el, ctx) {
   }
   function laneTop(p) {
     let y = LANE.head;
-    for (const q of PARTS) { if (q === p) return y; y += LANE[q] + LANE.gap; }
+    for (const q of LANES) { if (q === p) return y; y += LANE[q] + LANE.gap; }
     return y;
   }
-  const totalH = () => laneTop("melody") + LANE.melody + 4;
+  const totalH = () => laneTop("ref") + LANE.ref + 4;
   function buildLabels() {
     const box = main.querySelector(".sk-labels");
     box.style.height = `${totalH()}px`;
@@ -542,6 +600,37 @@ export async function mount(el, ctx) {
       }
       box.append(row);
     }
+    box.append(refLabel());
+  }
+  // 参考の音の行: WAV を選ぶ・ミュート・音量・外す
+  function refLabel() {
+    const row = document.createElement("div");
+    row.className = "sk-lab sk-lab-ref";
+    row.style.top = `${laneTop("ref")}px`;
+    row.style.height = `${LANE.ref}px`;
+    row.innerHTML = `<div class="sk-lab-top"><span class="sk-lab-name"><span></span></span><span class="sk-ref-file"></span></div>
+      <div class="sk-lab-ctl"><button type="button" class="sk-mute" aria-pressed="false">M</button><input type="range" class="sk-vol" min="0" max="1" step="0.05"><button type="button" class="sk-clear">${IC.trash}</button></div>`;
+    row.querySelector(".sk-lab-name span").textContent = L.refLane;
+    const r = sk.ref;
+    row.querySelector(".sk-ref-file").append(selectBox({
+      options: [{ value: "", label: L.refNone }, ...(st.audio || []).map((f) => ({ value: f, label: f }))],
+      value: r?.file || "", onChange: (v) => setRef(v || null),
+    }));
+    const mute = row.querySelector(".sk-mute");
+    mute.title = L.mute;
+    mute.setAttribute("aria-pressed", String(!!r?.mute));
+    mute.disabled = !r;
+    mute.addEventListener("click", () => { changed(() => { sk.ref.mute = !sk.ref.mute; }); applyRefGain(); mute.setAttribute("aria-pressed", String(sk.ref.mute)); });
+    const v = row.querySelector(".sk-vol");
+    v.value = r?.vol ?? 0.8;
+    v.disabled = !r;
+    v.addEventListener("input", () => { sk.ref.vol = Number(v.value); applyRefGain(); });
+    v.addEventListener("change", () => changed(() => { sk.ref.vol = Number(v.value); }));
+    const clr = row.querySelector(".sk-clear");
+    clr.title = L.refRemove;
+    clr.disabled = !r;
+    clr.addEventListener("click", () => setRef(null));
+    return row;
   }
   function updateHead() {
     main.querySelectorAll(".sk-mode button").forEach((b) => b.setAttribute("aria-checked", String(b.dataset.m === mode)));
@@ -554,7 +643,7 @@ export async function mount(el, ctx) {
     r.setAttribute("aria-pressed", String(rec));
   }
   function updateParts() {
-    main.querySelectorAll(".sk-lab").forEach((row) => {
+    main.querySelectorAll(".sk-lab:not(.sk-lab-ref)").forEach((row) => {
       const p = row.dataset.p;
       row.classList.toggle("sel", p === part);
       row.querySelector(".sk-mute").setAttribute("aria-pressed", String(sk.mix[p].mute));
@@ -702,7 +791,7 @@ export async function mount(el, ctx) {
   function layoutLanes() {
     const body = main.querySelector(".sk-body");
     if (!body) return false;
-    const fixed = LANE.head + LANE.drums + LANE.chords + LANE.gap * 3 + 8;
+    const fixed = LANE.head + LANE.drums + LANE.chords + LANE.ref + LANE.gap * 4 + 8;
     const rest = Math.max(216, body.clientHeight - 16 - fixed);
     const bass = Math.round(rest * 0.45), melody = rest - bass;
     if (bass === LANE.bass && melody === LANE.melody) return false;
@@ -751,6 +840,7 @@ export async function mount(el, ctx) {
       }
       g.globalAlpha = 1;
     }
+    drawRef(g, c, w, sw, grad);
     // ドラム
     const dy = laneTop("drums"), rh = LANE.drums / 4;
     DRUMS.forEach((d, r) => {
@@ -830,6 +920,34 @@ export async function mount(el, ctx) {
       g.fillRect(x, LANE.head - 4, 2, h - LANE.head + 4);
     }
   }
+  // 参考の音: スケッチの長さ分の波形（offset 秒から）。無いときは使い方を出す
+  function drawRef(g, c, w, sw, grad) {
+    const y = laneTop("ref"), lh = LANE.ref;
+    g.fillStyle = c.ink2; roundRect(g, 0, y, w, lh, 6); g.fill();
+    g.font = "11px system-ui, sans-serif";
+    if (!sk.ref) { g.fillStyle = c.faint; g.fillText(L.refEmpty, 10, y + lh / 2 + 4); return; }
+    if (!refInfo) { g.fillStyle = c.faint; g.fillText(sk.ref.file, 10, y + lh / 2 + 4); return; }
+    const loop = steps() * stepSec(), mid = y + lh / 2, amp = lh / 2 - 6;
+    g.fillStyle = grad(sk.ref.mute ? 0.25 : 0.75);
+    for (let x = 0; x < w; x += 2) {
+      const t0 = sk.ref.offset + (x / w) * loop, t1 = sk.ref.offset + ((x + 2) / w) * loop;
+      let pk = 0;
+      for (let i = Math.floor(t0 / refInfo.binSec); i < Math.ceil(t1 / refInfo.binSec) && i < refInfo.peaks.length; i++) pk = Math.max(pk, refInfo.peaks[i]);
+      const hh = Math.max(1, pk * amp);
+      g.fillRect(x, mid - hh, 1.6, hh * 2);
+    }
+    if (refInfo.duration - sk.ref.offset < loop) {     // 録音がスケッチより短いとき、終わりに線
+      const xe = ((refInfo.duration - sk.ref.offset) / loop) * w;
+      g.fillStyle = c.faint; g.fillRect(xe, y + 4, 1, lh - 8);
+    }
+    const label = (text, ty, color) => {      // 波形の上でも読めるよう、文字の後ろを暗くする
+      const tw = g.measureText(text).width;
+      g.fillStyle = "rgba(0,0,0,.55)"; roundRect(g, 4, ty - 11, tw + 8, 15, 4); g.fill();
+      g.fillStyle = color; g.fillText(text, 8, ty);
+    };
+    label(`${sk.ref.file} · ${sk.ref.offset.toFixed(2)} s`, y + 14, c.text);
+    if (!playing) label(L.refHelp, y + lh - 5, c.muted);
+  }
   function roundRect(g, x, y, w, h, r) {
     r = Math.min(r, w / 2, h / 2);
     g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r);
@@ -843,6 +961,8 @@ export async function mount(el, ctx) {
     const x = e.clientX - r.left, y = e.clientY - r.top;
     const s = Math.floor(x / sw);
     if (s < 0 || s >= steps()) return;
+    const rt = laneTop("ref");
+    if (y >= rt && y < rt + LANE.ref) return refDrag(e, x);   // 参考の音は、ドラッグで頭を合わせる
     cursor = s;
     if (y < LANE.head) { draw(); return; }     // 小節番号の帯を押すとカーソルだけ動く
     for (const p of PARTS) {
@@ -912,6 +1032,28 @@ export async function mount(el, ctx) {
     const at = Math.floor(s / 8) * 8;
     const half2 = at % 16 === 8 || sk.chords.some((c) => c.at === at + 8);
     return { at, ln: Math.min(half2 ? 8 : 16, steps() - at) };
+  }
+  function refDrag(e, x0) {
+    if (!sk.ref || !refInfo) return;
+    const cv = e.currentTarget, loop = steps() * stepSec(), w = geom().w;
+    const start = sk.ref.offset, before = JSON.stringify(sk);
+    let moved = false;
+    cv.setPointerCapture(e.pointerId);
+    const move = (ev) => {
+      const dx = ev.clientX - cv.getBoundingClientRect().left - x0;
+      if (Math.abs(dx) > 2) moved = true;
+      sk.ref.offset = Math.round(Math.max(0, Math.min(refInfo.duration, start - (dx / w) * loop)) * 1000) / 1000;
+      draw();
+    };
+    const up = () => {
+      cv.removeEventListener("pointermove", move); cv.removeEventListener("pointerup", up);
+      if (!moved) return;
+      undo.push(before);
+      clearTimeout(saveTimer); saveTimer = setTimeout(save, 350);
+      if (playing) syncRef();
+    };
+    cv.addEventListener("pointermove", move);
+    cv.addEventListener("pointerup", up);
   }
   // コードの行を押したとき: その調のコードから選ぶ（置いてあるコードなら差し替え・消す）
   function chordMenu(s, x, y) {
