@@ -29,7 +29,7 @@ EXT = ".sketch.json"
 FORMAT = "hub-sketch/1"
 KEYS = ["C", "C#", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B"]
 SCALES = ("major", "minor")
-BARS = (1, 2, 4, 8)
+BARS = (1, 2, 4, 8, 16)
 PARTS = ("drums", "bass", "chords", "melody")
 DRUM_NAMES = ("kick", "snare", "hat", "clap")
 NAME_RE = re.compile(r"^[^\\/:*?\"<>|\x00-\x1f]{1,80}$")
@@ -149,22 +149,14 @@ def _num(v, lo, hi, default):
         return default
 
 
-def normalize(raw: dict) -> tuple[dict, list[str]]:
-    """読み込んだ JSON を、鳴らせる形に直す。直せなかった所は捨てて warnings に理由を残す。"""
-    s = _theory()
-    warn: list[str] = []
-    if not isinstance(raw, dict):
-        raise SketchError("スケッチの中身が JSON のオブジェクトではありません")
-    d = default_sketch()
-    out = {"format": FORMAT}
-    out["bpm"] = int(round(_num(raw.get("bpm"), 40, 240, d["bpm"])))
-    out["key"] = raw.get("key") if raw.get("key") in KEYS else d["key"]
-    if raw.get("key") not in (None, *KEYS):
-        warn.append(f"key は {', '.join(KEYS)} のどれか（{raw.get('key')} → {out['key']}）")
-    out["scale"] = raw.get("scale") if raw.get("scale") in SCALES else d["scale"]
-    out["bars"] = raw.get("bars") if raw.get("bars") in BARS else d["bars"]
-    steps = 16 * out["bars"]
+MAX_SECTIONS = 32
 
+
+def _parts(raw: dict, bars: int, warn: list[str], where: str = "") -> dict:
+    """1 つのセクション（または前の版の、セクションの無いスケッチ）のドラム・ベース・コード・メロディを直す。"""
+    s = _theory()
+    steps = 16 * bars
+    out = {}
     drums = raw.get("drums") if isinstance(raw.get("drums"), dict) else {}
     out["drums"] = {}
     for name in DRUM_NAMES:
@@ -182,7 +174,7 @@ def normalize(raw: dict) -> tuple[dict, list[str]]:
                     raise ValueError("範囲外")
                 res.append({"at": at, "note": s.midi_name(midi), "len": min(ln, steps - at)})
             except Exception as e:
-                warn.append(f"{key}[{i}] を読み飛ばした: {e}")
+                warn.append(f"{where}{key}[{i}] を読み飛ばした: {e}")
         return sorted(res, key=lambda x: (x["at"], s.note_midi(x["note"])))
 
     out["bass"], out["melody"] = notes("bass"), notes("melody")
@@ -195,8 +187,43 @@ def normalize(raw: dict) -> tuple[dict, list[str]]:
                 raise ValueError("範囲外")
             chords.append({"at": at, "name": str(c["name"]).strip(), "len": min(ln, steps - at)})
         except Exception as e:
-            warn.append(f"chords[{i}] を読み飛ばした: {e}")
+            warn.append(f"{where}chords[{i}] を読み飛ばした: {e}")
     out["chords"] = sorted(chords, key=lambda x: x["at"])
+    return out
+
+
+def normalize(raw: dict) -> tuple[dict, list[str]]:
+    """読み込んだ JSON を、鳴らせる形に直す。直せなかった所は捨てて warnings に理由を残す。
+    曲はセクション（イントロ・A メロ・サビ …）の並び。前の版の、セクションの無いスケッチは「名前の無いセクション 1 つ」として読む。"""
+    s = _theory()
+    warn: list[str] = []
+    if not isinstance(raw, dict):
+        raise SketchError("スケッチの中身が JSON のオブジェクトではありません")
+    d = default_sketch()
+    out = {"format": FORMAT}
+    out["bpm"] = int(round(_num(raw.get("bpm"), 40, 240, d["bpm"])))
+    out["key"] = raw.get("key") if raw.get("key") in KEYS else d["key"]
+    if raw.get("key") not in (None, *KEYS):
+        warn.append(f"key は {', '.join(KEYS)} のどれか（{raw.get('key')} → {out['key']}）")
+    out["scale"] = raw.get("scale") if raw.get("scale") in SCALES else d["scale"]
+
+    secs = raw.get("sections")
+    if not isinstance(secs, list) or not secs:
+        secs = [{**raw, "name": ""}]                 # 前の版の形（bars・drums … が一番上にある）
+    out["sections"] = []
+    for i, sec in enumerate(secs[:MAX_SECTIONS]):
+        if not isinstance(sec, dict):
+            warn.append(f"sections[{i}] を読み飛ばした: オブジェクトではない")
+            continue
+        bars = sec.get("bars") if sec.get("bars") in BARS else 2
+        if sec.get("bars") not in (None, *BARS):
+            warn.append(f"sections[{i}].bars は {', '.join(map(str, BARS))} のどれか（{sec.get('bars')} → {bars}）")
+        name = str(sec.get("name") or "").strip()[:24]
+        out["sections"].append({"name": name, "bars": bars, **_parts(sec, bars, warn, f"sections[{i}]." if len(secs) > 1 else "")})
+    if len(secs) > MAX_SECTIONS:
+        warn.append(f"セクションは {MAX_SECTIONS} 個まで（後ろを読み飛ばした）")
+    if not out["sections"]:
+        out["sections"].append({"name": "", "bars": 2, **_parts({}, 2, warn)})
 
     mix = raw.get("mix") if isinstance(raw.get("mix"), dict) else {}
     # 参考の音（保存先フォルダの WAV。任意）
@@ -300,21 +327,39 @@ def new_sketch(name: str | None = None) -> dict:
     p = _path(name)
     if p.exists():
         raise SketchError(f"同じ名前のスケッチがあります: {name}")
-    _write_atomic(p, _dump(default_sketch()))
+    _write_atomic(p, _dump(normalize(default_sketch())[0]))
     return open_sketch(name)
 
 
 def _dump(sketch: dict) -> str:
-    """人と Claude が読みやすい形（ドラムは 1 行 1 パート、音符は 1 行 1 音）。"""
-    lines = ["{", f'  "format": "{FORMAT}",',
-             f'  "bpm": {sketch["bpm"]}, "key": "{sketch["key"]}", "scale": "{sketch["scale"]}", "bars": {sketch["bars"]},',
-             '  "drums": {']
+    """人と Claude が読みやすい形（ドラムは 1 行 1 パート、音符は 1 行 1 音）。
+    名前の無いセクションが 1 つだけなら、前の版と同じ形（bars・drums … を一番上）で書く。"""
     bar = lambda pat: "|".join(pat[i:i + 16] for i in range(0, len(pat), 16))
-    lines += [f'    "{d}": "{bar(sketch["drums"][d])}"' + ("," if d != "clap" else "") for d in DRUM_NAMES]
-    lines.append("  },")
-    for key in ("bass", "chords", "melody"):
-        items = [json.dumps(x, ensure_ascii=False) for x in sketch[key]]
-        lines.append(f'  "{key}": [' + ("" if not items else "\n    " + ",\n    ".join(items) + "\n  ") + "],")
+
+    def parts(sec: dict, ind: str) -> list[str]:
+        out = [f'{ind}"drums": {{']
+        out += [f'{ind}  "{d}": "{bar(sec["drums"][d])}"' + ("," if d != "clap" else "") for d in DRUM_NAMES]
+        out.append(f"{ind}}},")
+        for key in ("bass", "chords", "melody"):
+            items = [json.dumps(x, ensure_ascii=False) for x in sec[key]]
+            out.append(f'{ind}"{key}": [' + ("" if not items else f"\n{ind}  " + f",\n{ind}  ".join(items) + f"\n{ind}") + "],")
+        return out
+
+    secs = sketch["sections"]
+    head = f'  "bpm": {sketch["bpm"]}, "key": "{sketch["key"]}", "scale": "{sketch["scale"]}",'
+    lines = ["{", f'  "format": "{FORMAT}",']
+    if len(secs) == 1 and not secs[0]["name"]:
+        lines.append(head + f' "bars": {secs[0]["bars"]},')
+        lines += parts(secs[0], "  ")
+    else:
+        lines += [head, '  "sections": [']
+        for i, sec in enumerate(secs):
+            lines.append(f'    {{"name": {json.dumps(sec["name"], ensure_ascii=False)}, "bars": {sec["bars"]},')
+            body = parts(sec, "     ")
+            body[-1] = body[-1].rstrip(",")
+            lines += body
+            lines.append("    }" + ("," if i < len(secs) - 1 else ""))
+        lines.append("  ],")
     if sketch.get("ref"):
         lines.append('  "ref": ' + json.dumps(sketch["ref"], ensure_ascii=False) + ",")
     if sketch.get("voices"):

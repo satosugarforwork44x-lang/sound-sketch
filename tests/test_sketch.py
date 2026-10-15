@@ -37,13 +37,34 @@ class SketchTest(unittest.TestCase):
     def test_roundtrip_and_warnings(self):
         r = self.api.new_sketch("a")
         sk = r["sketch"]
-        sk["bass"] = [{"at": 0, "note": "C2", "len": 4}, {"at": 0, "note": "H9", "len": 1}]
-        sk["chords"] = [{"at": 0, "name": "Cm7", "len": 16}]
+        sec = sk["sections"][0]
+        sec["bass"] = [{"at": 0, "note": "C2", "len": 4}, {"at": 0, "note": "H9", "len": 1}]
+        sec["chords"] = [{"at": 0, "name": "Cm7", "len": 16}]
         out = self.api.save_sketch("a", sk)
         self.assertEqual(len(out["warnings"]), 1)
-        again = self.api.open_sketch("a")["sketch"]
+        again = self.api.open_sketch("a")["sketch"]["sections"][0]
         self.assertEqual(again["bass"], [{"at": 0, "note": "C2", "len": 4}])
         self.assertEqual(len(again["drums"]["kick"]), 16 * again["bars"])
+        text = (self.tmp / "Sketch" / "a.sketch.json").read_text(encoding="utf-8")
+        self.assertNotIn('"sections"', text)          # セクションが 1 つなら、前の版と同じ形で書く
+
+    def test_sections(self):
+        if not self.api.state()["numpy"]:
+            self.skipTest("numpy なし")
+        sk = self.api.new_sketch("song")["sketch"]
+        base = sk["sections"][0]
+        sk["sections"] = [{**base, "name": "イントロ", "bars": 4}, {**base, "name": "Aメロ", "bars": 8},
+                          {**base, "name": "サビ", "bars": 4}]
+        self.api.save_sketch("song", sk)
+        text = (self.tmp / "Sketch" / "song.sketch.json").read_text(encoding="utf-8")
+        self.assertIn('"sections"', text)
+        json.loads(text)                               # 人が読める形でも、JSON として正しい
+        got = self.api.open_sketch("song")["sketch"]["sections"]
+        self.assertEqual([(s["name"], s["bars"]) for s in got], [("イントロ", 4), ("Aメロ", 8), ("サビ", 4)])
+        self.assertEqual(len(got[1]["drums"]["kick"]), 16 * 8)   # 短いパターンは小節の数まで伸ばす
+        out = self.api.export_wav("song", 1)
+        with wave.open(out["path"]) as w:              # 16 小節 × 4 拍 × 0.625 秒（BPM 96）＝ 40 秒 + 余韻
+            self.assertAlmostEqual(w.getnframes() / 44100, 16 * 4 * 60 / 96 + 1.0, delta=0.05)
 
     def test_unsafe_names_rejected(self):
         for bad in ("../x", "a/b", "c:d"):
@@ -138,7 +159,7 @@ class SketchTest(unittest.TestCase):
         sk = self.api.new_sketch("v")["sketch"]
         sk["voices"] = {"melody": {"sample": "glass.wav", "root": "D6"}, "clap": {"sample": "glass.wav"},
                         "piano": {"sample": "x.wav"}, "bass": {"sample": "../x.wav"}}
-        sk["melody"] = [{"at": 0, "note": "D5", "len": 4}]
+        sk["sections"][0]["melody"] = [{"at": 0, "note": "D5", "len": 4}]
         w = self.api.save_sketch("v", sk)["warnings"]
         self.assertEqual(len(w), 2)                  # 知らない枠・フォルダを出る名前は読み飛ばす
         got = self.api.open_sketch("v")["sketch"]["voices"]

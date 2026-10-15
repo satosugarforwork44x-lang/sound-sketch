@@ -26,10 +26,11 @@ Hub renders the audio itself (numpy) — **do not write audio code; edit the JSO
 
 | Field | Rule |
 |---|---|
-| time grid | 1 step = a 16th note. 16 steps per bar. Total steps = 16 × `bars` |
+| time grid | 1 step = a 16th note. 16 steps per bar. Total steps = 16 × `bars` (per section) |
+| `sections` | optional: a song as an ordered list of sections, e.g. `[{"name": "Intro", "bars": 4, "drums": {…}, "bass": […], "chords": […], "melody": […]}, {"name": "Verse", "bars": 8, …}]`. Each section has its own `bars` and parts, with `at` counted from the start of that section. They play one after another. Without `sections`, `bars`/`drums`/`bass`/`chords`/`melody` at the top level are one section (the short form shown above) |
 | `bpm` | 40–240 |
 | `key` / `scale` | key: C C# D Eb E F F# G Ab A Bb B / scale: `major` or `minor` |
-| `bars` | 1, 2, 4 or 8 |
+| `bars` | 1, 2, 4, 8 or 16 |
 | `drums.*` | one character per step: `x` hit, `X` accented hit, `.` rest. `|` and spaces are ignored (use `|` between bars) |
 | `bass` / `melody` | notes: `at` = start step (0-based), `note` = name with octave (`C4` = middle C, `F#3`, `Bb2`), `len` = steps |
 | `chords` | `name`: C, Cm, C7, Cmaj7, Cm7, Cdim, Caug, Csus2, Csus4, C6, Cm6, Cadd9, C9, Cm7b5, Cdim7 (slash bass like `C/E` is accepted but ignored) |
@@ -38,6 +39,8 @@ Hub renders the audio itself (numpy) — **do not write audio code; edit the JSO
 | `mix` | per part: `vol` 0–1, `mute` true/false |
 
 Notes for editing:
+- Typical song: Intro 4 / Verse 8 / Pre-chorus 4 / Chorus 8 / Bridge 8 / Outro 4 bars. To repeat a chorus, copy the section (they are independent).
+- `bpm`, `key`, `scale`, `ref`, `voices` and `mix` are for the whole song.
 - Typical ranges: bass C1–C3, chords are voiced from octave 3 automatically, melody C4–C6.
 - Anything that cannot be read is skipped and shown to the user as a warning (the rest still plays).
 - Keep `ref` and `voices` as they are unless asked (they point to the user's recordings). `samples/samples.json` lists each sample's `root`.

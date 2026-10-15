@@ -46,6 +46,7 @@ The layout went through several rounds of real use. The table shows what was cho
 | **Easy to erase** | Right-click deletes a cell, note or chord. Notes are hit even if you miss by one row. The 🗑 next to each part clears it. Lanes grow with the window, so rows are easier to hit |
 | **A reference track** | Hum, sing or record something (e.g. with Hub's Rec Sketch, which can remove room noise) and drop the WAV on the panel. It loops with the sketch, so you can play along with your own voice. Drag the waveform to line up the start; double-click jumps to where the sound begins. It is mixed into the exported WAV too |
 | **Your own sounds, in four steps** | Tap a glass, clap, knock or say "pa" into the mic, and play it on the keys or a drum pad. The steps are laid out as 1 → 4 (measure the room, record, shape, use) so there is nothing to learn. Silence is cut, the volume evened out and room noise removed automatically; the **pitch is detected** so the keys play in tune (tuned sounds via YIN, struck sounds like glass via their strongest tone — fix it by ear with ‹ ›). The **mic and the PC's sound are recorded separately** (like Rec Sketch), so a voice on a call or the ambience of your own video can be used too — pick Mic / PC sound / Both afterwards. Built in, so it works without Hub's Rec Sketch |
+| **Sections, not an endless timeline** | A song is a row of tabs — Intro 4 · Verse 8 · Chorus 8 … — each edited with the same 1–16 bar screen. **+** adds the next section with a typical length, right-click renames, duplicates (for a second chorus), moves or deletes. Play **Loop this** while writing, **Whole song** to hear the structure; the export is the whole song. Enough structure to hand to AI, without a DAW arranger |
 | **You can always see what is playing** | The row of the note you press glows; during playback, sounding notes and chords are outlined |
 | **Nothing is lost** | `Ctrl+Z` undo. WAV export never overwrites (`name (2).wav`). Edits made outside (by Claude) are picked up automatically |
 | **Remappable keys** | Keys are stored by physical position (`KeyboardEvent.code`), so JIS and US keyboards behave the same. A numpad preset is included |
@@ -54,8 +55,9 @@ The layout went through several rounds of real use. The table shows what was cho
 
 | Feature | What it does |
 |---|---|
-| **4 parts** | Drums (kick, snare, hat, clap — accents with Shift), bass, chords, melody. 1 / 2 / 4 / 8 bars, BPM 40–240, any key, major or minor |
-| **Mixer** | Volume and mute per part |
+| **4 parts** | Drums (kick, snare, hat, clap — accents with Shift), bass, chords, melody. 1 / 2 / 4 / 8 / 16 bars per section, BPM 40–240, any key, major or minor |
+| **Song sections** | Intro, Verse, Pre-chorus, Chorus, Bridge, Outro — add, rename, duplicate, reorder; play one or the whole song |
+| **Mixer** | Volume and mute (speaker button) per part |
 | **Mouse editing** | Click grid cells and notes to add or remove them, click the chord lane to choose a chord |
 | **Reference track** | Any WAV in the sketch folder (or dropped on the panel) plays along, mixed into the export |
 | **Make a sound** | Record a short sound (or drop a WAV), shape it and use it as the bass, chords, melody or any drum. Saved in `samples/` next to the sketches; used for playing and for the export |

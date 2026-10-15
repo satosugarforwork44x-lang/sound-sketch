@@ -257,9 +257,10 @@ def render(sketch: dict, repeat: int = 1, ref: np.ndarray | None = None, samples
     ref（参考の音を SR の 1ch にしたもの）があれば、スケッチの頭から offset 秒の所を、繰り返しごとに重ねる。
     samples = {枠: (録った音, 元の高さの MIDI)}。枠（kick … / bass / chords / melody）は、内蔵の音の代わりにそれで鳴らす。"""
     samples = samples or {}
-    steps = 16 * sketch["bars"]
     step_sec = 60.0 / sketch["bpm"] / 4
-    total = steps * step_sec * repeat
+    secs = sketch["sections"]
+    song_sec = sum(16 * sec["bars"] for sec in secs) * step_sec     # 曲（セクションを全部つないだ長さ）
+    total = song_sec * repeat
     out = np.zeros(int(SR * (total + 2.0)))
     mix = sketch["mix"]
 
@@ -287,25 +288,27 @@ def render(sketch: dict, repeat: int = 1, ref: np.ndarray | None = None, samples
         return cache[d]
     rinfo = sketch.get("ref")
     for r in range(repeat):
-        off = r * steps * step_sec
-        if ref is not None and rinfo and not rinfo["mute"]:
+        song0 = r * song_sec
+        if ref is not None and rinfo and not rinfo["mute"]:   # 参考の音は曲の頭から（セクションをまたいで続けて鳴る）
             i0 = int(rinfo["offset"] * SR)
-            add(ref[i0: i0 + int(steps * step_sec * SR)], off, rinfo["vol"])
-        if not mix["drums"]["mute"]:
-            for d in DRUMS:
-                pat = sketch["drums"][d]
-                for s, ch in enumerate(pat):
-                    if ch in "xX":
-                        add(dcache(d), off + s * step_sec, mix["drums"]["vol"] * (1.0 if ch == "X" else 0.72))
-        for part, kind in (("bass", "bass"), ("melody", "lead")):
-            if mix[part]["mute"]:
-                continue
-            for n in sketch[part]:
-                add(vcache(part, kind, note_midi(n["note"]), n["len"]), off + n["at"] * step_sec, mix[part]["vol"])
-        if not mix["chords"]["mute"]:
-            for c in sketch["chords"]:
-                for midi in chord_midis(c["name"]):
-                    add(vcache("chords", "pad", midi, c["len"]), off + c["at"] * step_sec, mix["chords"]["vol"])
+            add(ref[i0: i0 + int(song_sec * SR)], song0, rinfo["vol"])
+        off = song0
+        for sec in secs:
+            if not mix["drums"]["mute"]:
+                for d in DRUMS:
+                    for s, ch in enumerate(sec["drums"][d]):
+                        if ch in "xX":
+                            add(dcache(d), off + s * step_sec, mix["drums"]["vol"] * (1.0 if ch == "X" else 0.72))
+            for part, kind in (("bass", "bass"), ("melody", "lead")):
+                if mix[part]["mute"]:
+                    continue
+                for n in sec[part]:
+                    add(vcache(part, kind, note_midi(n["note"]), n["len"]), off + n["at"] * step_sec, mix[part]["vol"])
+            if not mix["chords"]["mute"]:
+                for c in sec["chords"]:
+                    for midi in chord_midis(c["name"]):
+                        add(vcache("chords", "pad", midi, c["len"]), off + c["at"] * step_sec, mix["chords"]["vol"])
+            off += 16 * sec["bars"] * step_sec
     out = out[: int(SR * (total + 1.0))]                 # 余韻は 1 秒まで
     peak = float(np.max(np.abs(out))) if len(out) else 0.0
     if peak > 0.89:                                        # 割れないように -1 dBFS に収める

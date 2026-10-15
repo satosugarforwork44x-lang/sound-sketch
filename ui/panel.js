@@ -29,12 +29,15 @@ const L = EN ? {
   warn: "Some parts were skipped",
   padDrums: "Drum pads", padPiano: (p) => `Piano — ${p}`, sharpChip: "♯", sharpChord: "7th",
   stepRec: "Keys go in at ▼ and move on · Space = rest · Backspace = erase back · Enter = play", liveRec: "Rec: notes are written while playing", noRec: (r) => `Press ${r} (record) to write what you play`,
-  stepLen: "Step", lens: { 1: "16th", 2: "8th", 4: "Quarter" },
+  stepLen: "Step", lens: { 1: "1/16", 2: "1/8", 4: "1/4" },
   triads: "Chords", sevenths: "7th chords", refLane: "Reference", refNone: "None",
   refEmpty: "Drop a WAV here or pick one on the left — it plays along with the sketch (a recording, an exported song, …)",
   refHelp: "Drag to line up the start · double-click = jump to where the sound begins", refRemove: "Remove the reference",
   refMissing: (f) => `${f} is not in the sketch folder`, refAdded: (f) => `Added ${f} as the reference`, clearPart: (p) => `Clear ${p}`, cleared: (p) => `Cleared ${p} (Ctrl+Z to undo)`, clickTip: "Click a key to put it at the cursor (▼)", rhythm: "Rhythm presets", rhythmSet: (n) => `Set “${n}” (Ctrl+Z to undo)`, del: "Delete", placeChord: "Pick a chord for this spot",
-  voiceBuiltIn: "Sound: built-in · make your own", voiceSample: (f) => `Sound: ${f}`, voiceDrums: (n) => (n > 1 ? `${n} pads use your sounds` : "1 pad uses your sound"),
+  voiceBuiltIn: "Sound: built-in · make your own",
+  secN: (i) => `Section ${i}`, addSec: "Add a section after this one", secKinds: ["Intro", "Verse", "Pre-chorus", "Chorus", "Bridge", "Outro"],
+  secRename: "Rename", secDup: "Duplicate", secLeft: "Move left", secRight: "Move right", secDel: "Delete this section",
+  playSec: "Loop this", playSong: "Whole song", secAdded: (n) => `Added “${n}” (Ctrl+Z to undo)`, unmute: "Unmute", voiceSample: (f) => `Sound: ${f}`, voiceDrums: (n) => (n > 1 ? `${n} pads use your sounds` : "1 pad uses your sound"),
 } : {
   dropFolder: "スケッチの保存先にするフォルダを、ここに落としてください",
   dropNote: "おすすめ: フォルダ窓のフォルダ（例: registries\\Sketch）を使い、Hub の設定で Claude に「読み書き」で共有すると、Claude がスケッチを直せます。",
@@ -62,7 +65,10 @@ const L = EN ? {
   refEmpty: "WAV をここに落とすか、左で選ぶと、スケッチと一緒に鳴ります（録音・書き出した曲など）",
   refHelp: "ドラッグで頭を合わせる ・ ダブルクリックで音の出だしに合わせる", refRemove: "参考の音を外す",
   refMissing: (f) => `${f} が保存先フォルダにありません`, refAdded: (f) => `${f} を参考の音にしました`, clearPart: (p) => `${p}を全部消す`, cleared: (p) => `${p}を消しました（Ctrl+Z で戻せます）`, clickTip: "クリックすると、カーソル（▼）の位置に入ります", rhythm: "リズムのプリセット", rhythmSet: (n) => `「${n}」にしました（Ctrl+Z で戻せます）`, del: "消す", placeChord: "ここに置くコードを選んでください",
-  voiceBuiltIn: "音色: 内蔵の音 ・ 自分で作る", voiceSample: (f) => `音色: ${f}`, voiceDrums: (n) => `${n} つのパッドが録った音`,
+  voiceBuiltIn: "音色: 内蔵の音 ・ 自分で作る",
+  secN: (i) => `セクション ${i}`, addSec: "このセクションの後ろに足す", secKinds: ["イントロ", "Aメロ", "Bメロ", "サビ", "間奏", "アウトロ"],
+  secRename: "名前を変える", secDup: "複製する", secLeft: "左へ", secRight: "右へ", secDel: "このセクションを消す",
+  playSec: "ここだけ", playSong: "通しで", secAdded: (n) => `「${n}」を足しました（Ctrl+Z で戻せます）`, unmute: "ミュートを外す", voiceSample: (f) => `音色: ${f}`, voiceDrums: (n) => `${n} つのパッドが録った音`,
 };
 
 const PARTS = ["drums", "bass", "chords", "melody"];
@@ -93,6 +99,8 @@ const IC = {
   keys: svg('<rect x="2.5" y="6" width="19" height="12" rx="2.5"/><path d="M6.5 10h.01M10 10h.01M13.5 10h.01M17 10h.01M8 14h8"/>'),
   folder: svg('<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>'),
   wave: svg('<path d="M3 12h2l2-6 3 12 3-9 2 6 2-3h4"/>'),
+  speaker: svg('<path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z" fill="currentColor" stroke="none"/><path d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11"/>'),
+  speakerOff: svg('<path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z" fill="currentColor" stroke="none"/><path d="M16 9.5l5 5M21 9.5l-5 5"/>'),
   trash: svg('<path d="M4 7h16M10 11v6M14 11v6"/><path d="M6 7l1 13h10l1-13M9 7V4h6v3"/>'),
 };
 
@@ -120,6 +128,21 @@ export async function mount(el, ctx) {
   let km = normalizeKeymap(await ctx.call("keymap_get").catch(() => null));
   const undo = [];
   const steps = () => 16 * sk.bars;
+  // 曲はセクション（イントロ・A メロ・サビ …）の並び。画面で開いているのは sec 番目。
+  // sk.bars / sk.drums / sk.bass … は、開いているセクションの中身を指す（今までの処理をそのまま使うため）
+  let sec = 0;
+  let songMode = false;          // 再生: このセクションだけ繰り返す / 通しで
+  const SEC_KEYS = ["bars", "drums", "bass", "chords", "melody"];
+  function bindSections(o) {
+    sec = Math.max(0, Math.min(sec, o.sections.length - 1));
+    for (const k of SEC_KEYS) {
+      Object.defineProperty(o, k, { configurable: true, enumerable: false,
+        get: () => o.sections[sec][k], set: (v) => { o.sections[sec][k] = v; } });
+    }
+    return o;
+  }
+  const secStart = (i = sec) => sk.sections.slice(0, i).reduce((a, s) => a + 16 * s.bars, 0) * stepSec();   // 曲の頭からの秒
+  const secName = (s, i) => s.name || L.secN(i + 1);
   const isPiano = () => part !== "drums";
 
   el.innerHTML = `<div class="sk"><div class="sk-empty" hidden></div><div class="sk-main" hidden></div></div>`;
@@ -149,7 +172,8 @@ export async function mount(el, ctx) {
   async function open(n, quiet = false) {
     try {
       const r = await ctx.call("open_sketch", { name: n });
-      name = r.name; sk = r.sketch; mtime = r.mtime;
+      if (r.name !== name) sec = 0;
+      name = r.name; sk = bindSections(r.sketch); mtime = r.mtime;
       loadRef();
       if (r.warnings?.length) ctx.toast(`${L.warn}: ${r.warnings[0]}${r.warnings.length > 1 ? ` (+${r.warnings.length - 1})` : ""}`, "error", 6000);
       else if (quiet) ctx.toast(L.reloaded);
@@ -225,12 +249,12 @@ export async function mount(el, ctx) {
   function refAt(when) {
     refTimers.push(setTimeout(() => {
       if (!playing || !sk.ref || !refInfo) return;
-      try { refEl.currentTime = sk.ref.offset; refEl.play().catch(() => {}); } catch { /* 読み込み中 */ }
+      try { refEl.currentTime = sk.ref.offset + secStart(); refEl.play().catch(() => {}); } catch { /* 読み込み中 */ }
     }, Math.max(0, (when - ac.currentTime) * 1000)));
   }
   function syncRef() {   // 今の位置に合わせる（再生中に頭をずらしたとき）
     if (!playing || !sk.ref || !refInfo) return;
-    try { refEl.currentTime = sk.ref.offset + position() * stepSec(); refEl.play().catch(() => {}); } catch { /* 読み込み中 */ }
+    try { refEl.currentTime = sk.ref.offset + secStart() + position() * stepSec(); refEl.play().catch(() => {}); } catch { /* 読み込み中 */ }
   }
   function stopRef() { refTimers.forEach(clearTimeout); refTimers = []; refEl.pause(); }
   function audio() {
@@ -271,12 +295,12 @@ export async function mount(el, ctx) {
     if (!st?.numpy) return;
     const keys = new Set(DRUMS.map(drumKey));
     for (const p of ["bass", "melody"]) {
-      for (const n of sk[p]) keys.add(voiceKey(p, noteMidi(n.note)));
+      for (const s of sk.sections) for (const n of s[p]) keys.add(voiceKey(p, noteMidi(n.note)));
       for (let i = 0; i < 7; i++) for (const sharp of [false, true]) {
         keys.add(voiceKey(p, keyMidi({ ...sk, mode, part: p, octOff: octOff[p], idx: i, sharp })));
       }
     }
-    for (const c of sk.chords) for (const m of chordMidis(c.name, 3)) keys.add(voiceKey("chords", m));
+    for (const s of sk.sections) for (const c of s.chords) for (const m of chordMidis(c.name, 3)) keys.add(voiceKey("chords", m));
     for (let i = 0; i < 7; i++) {                // コードのキー（I〜VII と 7th）
       for (const seventh of [false, true]) {
         const nm = keyChord({ ...sk, idx: i, seventh });
@@ -324,6 +348,10 @@ export async function mount(el, ctx) {
       schedule(nextStep, nextTime);
       nextTime += stepSec();
       nextStep = (nextStep + 1) % steps();
+      if (nextStep === 0 && songMode && sk.sections.length > 1) {   // 通し: 次のセクションへ（最後まで行ったら頭へ）
+        sec = (sec + 1) % sk.sections.length;
+        setTimeout(sectionView, Math.max(0, (nextTime - ac.currentTime) * 1000));
+      }
     }
   }
   function setPlaying(on) {
@@ -512,7 +540,7 @@ export async function mount(el, ctx) {
   function doUndo() {
     const prev = undo.pop();
     if (!prev) return;
-    sk = JSON.parse(prev);
+    sk = bindSections(JSON.parse(prev));
     render(); loadRef();
     clearTimeout(saveTimer); saveTimer = setTimeout(save, 200);
   }
@@ -529,6 +557,7 @@ export async function mount(el, ctx) {
       <div class="sk-head">
         <button type="button" class="btn primary sk-play"></button>
         <button type="button" class="btn sk-rec">${IC.rec}<span>${L.rec}</span></button>
+        <div class="seg seg-sm sk-pmode" role="radiogroup"><button type="button" role="radio" data-m="sec"><span>${L.playSec}</span></button><button type="button" role="radio" data-m="song"><span>${L.playSong}</span></button></div>
         <span class="sk-sep"></span>
         <span class="sk-file"></span><button type="button" class="icon-btn sk-new">${IC.plus}</button>
         <span class="sk-sep"></span>
@@ -536,6 +565,7 @@ export async function mount(el, ctx) {
         <span class="sk-key"></span><span class="sk-scale"></span><span class="sk-bars"></span>
         <span class="sk-ime" hidden></span>
       </div>
+      <div class="sk-secs"></div>
       <div class="sk-body">
         <div class="sk-labels"></div>
         <div class="sk-roll"><canvas class="sk-cv"></canvas></div>
@@ -576,8 +606,12 @@ export async function mount(el, ctx) {
       onChange: (v) => { changed(() => { sk.key = v; }); preload(); } }));
     $(".sk-scale").append(selectBox({ options: [{ value: "major", label: L.major }, { value: "minor", label: L.minor }], value: sk.scale,
       onChange: (v) => { changed(() => { sk.scale = v; }); preload(); } }));
-    $(".sk-bars").append(selectBox({ options: [1, 2, 4, 8].map((n) => ({ value: n, label: L.bars(n) })), value: sk.bars,
-      onChange: (v) => changed(() => resizeBars(Number(v))) }));
+    barsBox();
+    main.querySelectorAll(".sk-pmode button").forEach((b) => b.addEventListener("click", () => {
+      songMode = b.dataset.m === "song"; updatePMode();
+    }));
+    updatePMode();
+    buildSecs();
     main.querySelectorAll(".sk-mode button").forEach((b) => b.addEventListener("click", () => { mode = b.dataset.m; updateHead(); updatePad(); preload(); }));
     $(".sk-play").addEventListener("click", () => setPlaying(!playing));
     $(".sk-rec").addEventListener("click", () => { rec = !rec; updateTransport(); updatePad(); draw(); });
@@ -622,6 +656,88 @@ export async function mount(el, ctx) {
     ctx.setTitle(name);
     draw();
   }
+  function barsBox() {   // 小節の数（開いているセクションの）
+    const box = main.querySelector(".sk-bars");
+    box.innerHTML = "";
+    box.append(selectBox({ options: [1, 2, 4, 8, 16].map((n) => ({ value: n, label: L.bars(n) })), value: sk.bars,
+      onChange: (v) => { changed(() => resizeBars(Number(v))); buildSecs(); } }));
+  }
+  function updatePMode() {
+    main.querySelectorAll(".sk-pmode button").forEach((b) => b.setAttribute("aria-checked", String((b.dataset.m === "song") === songMode)));
+  }
+  // ---------- セクション（イントロ・A メロ・サビ …） ----------
+  function sectionView() {      // 開いているセクションが変わったら描き直す
+    if (!sk) return;
+    sec = Math.max(0, Math.min(sec, sk.sections.length - 1));
+    cursor = Math.min(cursor, steps() - 1);
+    barsBox(); buildSecs(); draw();
+  }
+  function selectSection(i) {
+    if (i === sec) return;
+    releaseAll();
+    sec = i; cursor = 0;
+    if (playing) { nextStep = 0; nextTime = ac.currentTime + 0.05; stopRef(); refAt(nextTime); }   // 再生中なら、そのセクションの頭から
+    sectionView(); preload();
+  }
+  function buildSecs() {
+    const box = main.querySelector(".sk-secs");
+    if (!box) return;
+    box.innerHTML = "";
+    sk.sections.forEach((s, i) => {
+      const b = document.createElement("button");
+      b.type = "button"; b.className = "sk-sec";
+      b.setAttribute("aria-pressed", String(i === sec));
+      b.innerHTML = "<span></span><small></small>";
+      b.firstChild.textContent = secName(s, i);
+      b.lastChild.textContent = String(s.bars);
+      b.style.flexGrow = String(s.bars);           // 長さに合わせた幅（曲の中での大きさが見える）
+      b.addEventListener("click", () => selectSection(i));
+      b.addEventListener("contextmenu", (e) => { e.preventDefault(); sectionMenu(i, e.clientX, e.clientY); });
+      box.append(b);
+    });
+    const add = document.createElement("button");
+    add.type = "button"; add.className = "sk-sec-add"; add.innerHTML = IC.plus; add.title = L.addSec;
+    add.addEventListener("click", (e) => {
+      const r = add.getBoundingClientRect();
+      const items = L.secKinds.map((n, k) => ({ label: `${n}  ·  ${L.bars(SEC_BARS[k])}`, onClick: () => addSection(n, SEC_BARS[k]) }));
+      setTimeout(() => ctx.contextMenu(items, r.left, r.bottom + 4), 0);
+    });
+    box.append(add);
+  }
+  const SEC_BARS = [4, 8, 4, 8, 8, 4];     // イントロ・A メロ・B メロ・サビ・間奏・アウトロ のよくある長さ
+  function uniqueName(n) {
+    const names = new Set(sk.sections.map((s) => s.name));
+    if (!names.has(n)) return n;
+    for (let i = 2; ; i++) if (!names.has(`${n} ${i}`)) return `${n} ${i}`;
+  }
+  function emptySection(name, bars) {
+    const s = 16 * bars;
+    return { name, bars, drums: Object.fromEntries(DRUMS.map((d) => [d, ".".repeat(s)])), bass: [], chords: [], melody: [] };
+  }
+  function addSection(kind, bars) {
+    const name = uniqueName(kind);
+    changed(() => {
+      const cur = sk.sections[sec], s = emptySection(name, bars);
+      // ドラムは今のセクションの 1 小節目を続けておく（リズムは続くことが多い。要らなければ 🗑）
+      for (const d of DRUMS) s.drums[d] = cur.drums[d].slice(0, 16).repeat(bars);
+      sk.sections.splice(sec + 1, 0, s);
+    });
+    sec += 1; cursor = 0;
+    sectionView(); preload();
+    ctx.toast(L.secAdded(name));
+  }
+  function sectionMenu(i, x, y) {
+    const s = sk.sections[i], n = sk.sections.length;
+    const items = [
+      ...L.secKinds.map((k) => ({ label: `${L.secRename}: ${k}`, onClick: () => { changed(() => { sk.sections[i].name = uniqueName(k); }); buildSecs(); } })),
+      "-",
+      { label: L.secDup, onClick: () => { changed(() => { sk.sections.splice(i + 1, 0, { ...JSON.parse(JSON.stringify(s)), name: uniqueName(s.name || L.secN(i + 1)) }); }); sec = i + 1; sectionView(); } },
+    ];
+    if (i > 0) items.push({ label: L.secLeft, onClick: () => { changed(() => { sk.sections.splice(i - 1, 0, ...sk.sections.splice(i, 1)); }); sec = i - 1; sectionView(); } });
+    if (i < n - 1) items.push({ label: L.secRight, onClick: () => { changed(() => { sk.sections.splice(i + 1, 0, ...sk.sections.splice(i, 1)); }); sec = i + 1; sectionView(); } });
+    if (n > 1) items.push("-", { label: L.secDel, danger: true, onClick: () => { changed(() => { sk.sections.splice(i, 1); }); sec = Math.min(sec, n - 2); sectionView(); } });
+    setTimeout(() => ctx.contextMenu(items, x, y), 0);
+  }
   function resizeBars(n) {
     const s = 16 * n;
     sk.bars = n;
@@ -634,6 +750,12 @@ export async function mount(el, ctx) {
     return y;
   }
   const totalH = () => laneTop("ref") + LANE.ref + 4;
+  // ミュート: スピーカーの絵（消しているときは × 付き）
+  function setMute(b, on) {
+    b.setAttribute("aria-pressed", String(on));
+    b.innerHTML = on ? IC.speakerOff : IC.speaker;
+    b.title = on ? L.unmute : L.mute;
+  }
   function buildLabels() {
     const box = main.querySelector(".sk-labels");
     box.style.height = `${totalH()}px`;
@@ -646,12 +768,12 @@ export async function mount(el, ctx) {
       row.style.top = `${laneTop(p)}px`;
       row.style.height = `${LANE[p]}px`;
       row.innerHTML = `<div class="sk-lab-top"><button type="button" class="sk-lab-name"><span></span><kbd></kbd></button><span class="sk-lab-oct"></span></div>
-        <div class="sk-lab-ctl"><button type="button" class="sk-mute" aria-pressed="false">M</button><input type="range" class="sk-vol" min="0" max="1" step="0.05"><button type="button" class="sk-clear">${IC.trash}</button></div>`;
+        <div class="sk-lab-ctl"><button type="button" class="sk-mute" aria-pressed="false"></button><input type="range" class="sk-vol" min="0" max="1" step="0.05"><button type="button" class="sk-clear">${IC.trash}</button></div>`;
       row.querySelector(".sk-lab-name span").textContent = L.parts[p];
       row.querySelector("kbd").textContent = keyLabel(hintKey[p]);
       row.querySelector(".sk-lab-name").addEventListener("click", () => selectPart(p));
       const mute = row.querySelector(".sk-mute");
-      mute.title = L.mute;
+      setMute(mute, sk.mix[p].mute);
       mute.addEventListener("click", () => changed(() => { sk.mix[p].mute = !sk.mix[p].mute; }) || updateParts());
       const clr = row.querySelector(".sk-clear");
       clr.title = L.clearPart(L.parts[p]);
@@ -680,7 +802,7 @@ export async function mount(el, ctx) {
     row.style.top = `${laneTop("ref")}px`;
     row.style.height = `${LANE.ref}px`;
     row.innerHTML = `<div class="sk-lab-top"><span class="sk-lab-name"><span></span></span><span class="sk-ref-file"></span></div>
-      <div class="sk-lab-ctl"><button type="button" class="sk-mute" aria-pressed="false">M</button><input type="range" class="sk-vol" min="0" max="1" step="0.05"><button type="button" class="sk-clear">${IC.trash}</button></div>`;
+      <div class="sk-lab-ctl"><button type="button" class="sk-mute" aria-pressed="false"></button><input type="range" class="sk-vol" min="0" max="1" step="0.05"><button type="button" class="sk-clear">${IC.trash}</button></div>`;
     row.querySelector(".sk-lab-name span").textContent = L.refLane;
     const r = sk.ref;
     row.querySelector(".sk-ref-file").append(selectBox({
@@ -688,10 +810,9 @@ export async function mount(el, ctx) {
       value: r?.file || "", onChange: (v) => setRef(v || null),
     }));
     const mute = row.querySelector(".sk-mute");
-    mute.title = L.mute;
-    mute.setAttribute("aria-pressed", String(!!r?.mute));
+    setMute(mute, !!r?.mute);
     mute.disabled = !r;
-    mute.addEventListener("click", () => { changed(() => { sk.ref.mute = !sk.ref.mute; }); applyRefGain(); mute.setAttribute("aria-pressed", String(sk.ref.mute)); });
+    mute.addEventListener("click", () => { changed(() => { sk.ref.mute = !sk.ref.mute; }); applyRefGain(); setMute(mute, sk.ref.mute); });
     const v = row.querySelector(".sk-vol");
     v.value = r?.vol ?? 0.8;
     v.disabled = !r;
@@ -717,7 +838,7 @@ export async function mount(el, ctx) {
     main.querySelectorAll(".sk-lab:not(.sk-lab-ref)").forEach((row) => {
       const p = row.dataset.p;
       row.classList.toggle("sel", p === part);
-      row.querySelector(".sk-mute").setAttribute("aria-pressed", String(sk.mix[p].mute));
+      setMute(row.querySelector(".sk-mute"), sk.mix[p].mute);
       const o = row.querySelector(".sk-lab-oct");
       o.textContent = p === "drums" ? "" : `Oct ${BASE_OCT[p] + octOff[p]}`;
     });
@@ -1013,17 +1134,17 @@ export async function mount(el, ctx) {
     g.font = "11px system-ui, sans-serif";
     if (!sk.ref) { g.fillStyle = c.faint; g.fillText(L.refEmpty, 10, y + lh / 2 + 4); return; }
     if (!refInfo) { g.fillStyle = c.faint; g.fillText(sk.ref.file, 10, y + lh / 2 + 4); return; }
-    const loop = steps() * stepSec(), mid = y + lh / 2, amp = lh / 2 - 6;
+    const loop = steps() * stepSec(), mid = y + lh / 2, amp = lh / 2 - 6, r0 = sk.ref.offset + secStart();   // このセクションの所
     g.fillStyle = grad(sk.ref.mute ? 0.25 : 0.75);
     for (let x = 0; x < w; x += 2) {
-      const t0 = sk.ref.offset + (x / w) * loop, t1 = sk.ref.offset + ((x + 2) / w) * loop;
+      const t0 = r0 + (x / w) * loop, t1 = r0 + ((x + 2) / w) * loop;
       let pk = 0;
       for (let i = Math.floor(t0 / refInfo.binSec); i < Math.ceil(t1 / refInfo.binSec) && i < refInfo.peaks.length; i++) pk = Math.max(pk, refInfo.peaks[i]);
       const hh = Math.max(1, pk * amp);
       g.fillRect(x, mid - hh, 1.6, hh * 2);
     }
-    if (refInfo.duration - sk.ref.offset < loop) {     // 録音がスケッチより短いとき、終わりに線
-      const xe = ((refInfo.duration - sk.ref.offset) / loop) * w;
+    if (refInfo.duration - r0 < loop) {     // 録音がスケッチより短いとき、終わりに線
+      const xe = Math.max(0, (refInfo.duration - r0) / loop) * w;
       g.fillStyle = c.faint; g.fillRect(xe, y + 4, 1, lh - 8);
     }
     const label = (text, ty, color) => {      // 波形の上でも読めるよう、文字の後ろを暗くする
