@@ -17,8 +17,8 @@ const L = EN ? {
   drums: { kick: "Kick", snare: "Snare", hat: "Hat", clap: "Clap" },
   mute: "Mute", repeat: (n) => `×${n}`, exportWav: "Export WAV", openFolder: "Open folder",
   exported: (f) => `Saved ${f}`, reloaded: "Reloaded (changed outside)", ime: "IME is on — keys may not play",
-  hintPiano: "S D F J K L ; = Do Re Mi Fa So La Ti · hold Shift = ♯ · Z / X = octave · Space = play",
-  hintDrums: (r) => `← ↓ ↑ → = drums · Space = play · ${r} = record`,
+  hintPiano: "S D F J K L ; = Do Re Mi Fa So La Ti · hold Shift = ♯ · Z / X = octave · Enter = play",
+  hintDrums: (r) => `← ↓ ↑ → = drums · Enter = play · ${r} = record while playing`,
   hintChords: "S D F J K L ; = chords I–VII · hold Shift = 7th · click a chord to put it at the cursor",
   keymap: "Key assignments", preset: "Preset", presets: { default: "Default", numpad: "Drums on numpad", custom: "Custom" },
   reset: "Reset", exportKeys: "Export", importKeys: "Import", close: "Close", pressKey: "Press a key…",
@@ -28,7 +28,7 @@ const L = EN ? {
     octDown: "Octave down", octUp: "Octave up", partDrums: "Part: drums", partBass: "Part: bass", partChords: "Part: chords", partMelody: "Part: melody" },
   warn: "Some parts were skipped",
   padDrums: "Drum pads", padPiano: (p) => `Piano — ${p}`, sharpChip: "♯", sharpChord: "7th",
-  stepRec: "Writing: keys go in at ▼ and move on · Space = rest · Backspace = erase back · Enter = play", liveRec: "Rec: notes are written while playing", noRec: (r) => `Press ${r} (record) to write what you play`,
+  stepRec: "Keys go in at ▼ and move on · Space = rest · Backspace = erase back · Enter = play", liveRec: "Rec: notes are written while playing", noRec: (r) => `Press ${r} (record) to write what you play`,
   stepLen: "Step", lens: { 1: "16th", 2: "8th", 4: "Quarter" },
   triads: "Chords", sevenths: "7th chords", refLane: "Reference", refNone: "None",
   refEmpty: "Drop a WAV here or pick one on the left — it plays along with the sketch (a recording, an exported song, …)",
@@ -45,8 +45,8 @@ const L = EN ? {
   drums: { kick: "キック", snare: "スネア", hat: "ハット", clap: "クラップ" },
   mute: "ミュート", repeat: (n) => `×${n}`, exportWav: "WAV に書き出す", openFolder: "フォルダを開く",
   exported: (f) => `${f} を保存しました`, reloaded: "外で書き換えられたので読み直しました", ime: "日本語入力がオンです。キーが鳴らないことがあります",
-  hintPiano: "S D F J K L ; = ドレミファソラシ ・ Shift を押しながら = ♯（半音上げ）・ Z / X = オクターブ ・ Space = 再生",
-  hintDrums: (r) => `← ↓ ↑ → = ドラム ・ Space = 再生 ・ ${r} = 録音`,
+  hintPiano: "S D F J K L ; = ドレミファソラシ ・ Shift を押しながら = ♯（半音上げ）・ Z / X = オクターブ ・ Enter = 再生",
+  hintDrums: (r) => `← ↓ ↑ → = ドラム ・ Enter = 再生 ・ ${r} = 再生しながら録音`,
   hintChords: "S D F J K L ; = コード I〜VII ・ Shift を押しながら = 7th ・ クリックでカーソルの位置に置く",
   keymap: "キーの割り当て", preset: "プリセット", presets: { default: "既定", numpad: "ドラムをテンキーに", custom: "カスタム" },
   reset: "既定に戻す", exportKeys: "書き出す", importKeys: "読み込む", close: "閉じる", pressKey: "キーを押してください…",
@@ -56,7 +56,7 @@ const L = EN ? {
     octDown: "オクターブ下", octUp: "オクターブ上", partDrums: "パート: ドラム", partBass: "パート: ベース", partChords: "パート: コード", partMelody: "パート: メロディ" },
   warn: "読み飛ばした所があります",
   padDrums: "ドラムパッド", padPiano: (p) => `ピアノ — ${p}`, sharpChip: "♯（半音上げ）", sharpChord: "7th",
-  stepRec: "書き込み中: ▼ に入って進む ・ Space = 休み ・ Backspace = 消して戻る ・ Enter = 再生", liveRec: "録音中: 再生しながら押した音が入ります", noRec: (r) => `${r}（録音）を押すと、弾いた音が入ります`,
+  stepRec: "押した音が ▼ に入って進む ・ Space = 休み ・ Backspace = 消して戻る ・ Enter = 再生", liveRec: "録音中: 再生しながら押した音が入ります", noRec: (r) => `${r}（録音）を押すと、弾いた音が入ります`,
   stepLen: "進む幅", lens: { 1: "16 分", 2: "8 分", 4: "4 分" },
   triads: "コード", sevenths: "7th のコード", refLane: "参考の音", refNone: "なし",
   refEmpty: "WAV をここに落とすか、左で選ぶと、スケッチと一緒に鳴ります（録音・書き出した曲など）",
@@ -115,7 +115,7 @@ export async function mount(el, ctx) {
   let stepLen = 2;               // 止まっているときの書き込みで進む幅（1 = 16 分・2 = 8 分・4 = 4 分）
   const drumDown = new Set();    // 書き込み中に押しているドラムのキー（全部離したら進む。同時に押せば同じマス）
   let drumWrote = false;
-  const stepping = () => rec && !playing;
+  const stepping = () => !playing;      // 止まっているときは、押した音がそのまま ▼ に入る（文字を打つのと同じ）
   const flashes = {};            // ドラムの行を一瞬光らせる（パート名 → 終わる時刻）
   let km = normalizeKeymap(await ctx.call("keymap_get").catch(() => null));
   const undo = [];
@@ -408,7 +408,7 @@ export async function mount(el, ctx) {
     h.voice.forEach((v) => v?.stop());
     updatePad(); draw();
     if (h.part !== part) return;
-    if (!playing && (rec || h.mouse)) return stepInput(h);     // 止まっているとき: マウスで押した音は、そのままカーソルの位置に入る
+    if (!playing) return stepInput(h);                          // 止まっているとき: 押した音は、そのままカーソルの位置に入る
     if (!rec && !h.mouse) return;                               // 再生中: 録音中か、マウスで押した音だけ入れる
     const s = steps();
     let len = position() - h.startPos;
@@ -796,7 +796,7 @@ export async function mount(el, ctx) {
     vb.title = SL.title;
     if (part === "drums") {
       main.querySelector(".sk-pad-title").textContent = L.padDrums;
-      rh.textContent = stepping() ? L.stepRec : ""; rh.classList.toggle("on", stepping()); mods.innerHTML = "";
+      rh.textContent = stepping() ? L.stepRec : ""; rh.classList.remove("on"); mods.innerHTML = "";
       box.querySelectorAll(".sk-cap").forEach((b) => {
         b.querySelector("kbd").textContent = keyLabel(km[b.dataset.k]);
         b.querySelector("b").textContent = L.drums[b.dataset.k];
@@ -806,8 +806,8 @@ export async function mount(el, ctx) {
       return;
     }
     main.querySelector(".sk-pad-title").textContent = L.padPiano(`${L.parts[part]} · Oct ${BASE_OCT[part] + octOff[part]}`);
-    rh.textContent = rec ? (playing ? L.liveRec : L.stepRec) : (playing ? L.noRec(keyLabel(km.rec)) : L.clickTip);
-    rh.classList.toggle("on", rec);
+    rh.textContent = playing ? (rec ? L.liveRec : L.noRec(keyLabel(km.rec))) : L.stepRec;
+    rh.classList.toggle("on", playing && rec);
     mods.innerHTML = `<span class="sk-chip" data-on="${sharp}"><kbd></kbd></span>`;
     const c1 = mods.querySelector(".sk-chip");
     c1.querySelector("kbd").textContent = keyLabel(km.sharp); c1.append(` ${part === "chords" ? L.sharpChord : L.sharpChip}`);
@@ -991,12 +991,10 @@ export async function mount(el, ctx) {
       }
     } else {   // 止まっているときはカーソル（録音待機で音が入る位置）
       const x = Math.round(cursor * sw);
-      if (rec) {                 // 書き込み中: 次に入る幅をうっすら塗る
-        g.fillStyle = "rgba(255,90,90,.12)";
-        g.fillRect(x, LANE.head, (part === "chords" ? 8 - (cursor % 8) : stepLen) * sw, h - LANE.head);
-      }
-      g.fillStyle = rec ? "rgba(255,90,90,.9)" : c.signal;
-      g.globalAlpha = rec ? 1 : 0.6;
+      g.fillStyle = c.signal;    // 次に入る幅をうっすら塗る
+      g.globalAlpha = 0.14;
+      g.fillRect(x, LANE.head, (part === "chords" ? 8 - (cursor % 8) : stepLen) * sw, h - LANE.head);
+      g.globalAlpha = 1;
       g.fillRect(x, LANE.head - 4, 2, h - LANE.head + 4);
       g.beginPath(); g.moveTo(x - 4, LANE.head - 8); g.lineTo(x + 6, LANE.head - 8); g.lineTo(x + 1, LANE.head - 2); g.closePath(); g.fill();
       g.globalAlpha = 1;
