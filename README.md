@@ -35,7 +35,7 @@ The layout went through several rounds of real use. The table shows what was cho
 |---|---|
 | **Notes on `S D F J K L ;`, hold left Shift for ♯** | 7 keys = Do Re Mi Fa So La Ti on the home position. The first version used only 5 keys under the right hand, so La and Ti were out of reach. Using both hands and keeping the left pinky on Shift gives a full scale with sharps, without moving the hands |
 | **Drums on the arrow keys** | Every keyboard has them, and they don't collide with the note keys. You can tap drums while the melody part is selected |
-| **Parts on `1 2 3 4`, play on `Space` / `Enter`** | Moved off the home row so they never fight with the notes |
+| **Parts on `1 2 3 4`, play on `Enter`** | Moved off the home row so they never fight with the notes |
 | **A mini keyboard is always visible** | "Where is the piano?" was the first feedback. The bottom strip shows which key plays which note, lights up what you press and marks the notes in the current key with a dot |
 | **Chords as buttons I–VII** | You pick from the chords that fit the key (Cm, Ddim, Eb, …). Hold Shift for 7th chords. Clicking a chord places it at the cursor |
 | **Stopped = typing, playing = recording** | While stopped, every key you press goes in at the cursor (▼) and the cursor moves on — like typing, no mode to switch on. While playing with **G** (record), what you tap snaps to the 16th-note grid. **Space** is a rest, **Backspace** erases back, the step is 16th / 8th / quarter. Drums pressed together land on the same step |
