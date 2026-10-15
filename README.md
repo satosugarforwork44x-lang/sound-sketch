@@ -38,7 +38,8 @@ The layout went through several rounds of real use. The table shows what was cho
 | **Parts on `1 2 3 4`, play on `Space` / `Enter`** | Moved off the home row so they never fight with the notes |
 | **A mini keyboard is always visible** | "Where is the piano?" was the first feedback. The bottom strip shows which key plays which note, lights up what you press and marks the notes in the current key with a dot |
 | **Chords as buttons I–VII** | You pick from the chords that fit the key (Cm, Ddim, Eb, …). Hold Shift for 7th chords. Clicking a chord places it at the cursor |
-| **Two ways to record** | While playing with **R**: what you tap snaps to the 16th-note grid. While stopped: each note goes to the cursor (▼) and the cursor moves on — like typing |
+| **Two ways to record** | While playing with **G** (record): what you tap snaps to the 16th-note grid. While stopped: each note goes to the cursor (▼) and the cursor moves on — like typing. **Space** is a rest, **Backspace** erases back, the step is 16th / 8th / quarter. Drums pressed together land on the same step |
+| **Record is on G** | It was on R, too far from the home row. G sits next to the left index finger, so you never leave the keys |
 | **"5 in key" mode** | Every key plays a note of the pentatonic scale, so nothing sounds wrong. Good for a first idea |
 | **Rhythm presets** | 8-beat, 16-beat, four on the floor, rock, hip-hop, ballad, reggae, bossa nova, funk. Start from a groove, then edit |
 | **Chords snap to half bars** | One chord per bar is the most common, two per bar the next. Clicking the first half of a bar fills the whole bar; clicking the second half splits it. No more chords stuck on the 4th beat |
@@ -93,7 +94,8 @@ Requires **Hub 0.7 or later** (0.7.5+ for the keyboard icon on the bar) and **nu
 | `Z` / `X` | Octave down / up |
 | `←` `↓` `↑` `→` | Snare / kick / hat / clap (Shift = accent) |
 | `Space` / `Enter` | Play / stop |
-| `R` | Record: while playing, taps snap to the grid; while stopped, notes go to the cursor |
+| `G` | Record: while playing, taps snap to the grid; while stopped, notes go to the cursor and it moves on |
+| `Space` / `Backspace` | While writing (stopped + record): rest (move on) / erase the step before and go back |
 | `Tab` | Do-Re-Mi (normal keyboard) / 5 in key (only notes that fit) |
 | `1` `2` `3` `4` | Part: drums / bass / chords / melody |
 | `Ctrl+Z` | Undo |

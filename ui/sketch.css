@@ -150,7 +150,7 @@
 .sk-voice .icon { width: 13px; height: 13px; }
 .sk-voice:hover { color: var(--text); border-color: var(--faint); }
 .sk-voice.on { color: var(--text); box-shadow: inset 0 0 0 1px var(--signal); border-color: transparent; }
-.sk-pad-rec + .sk-voice { margin-left: 8px; }
+.sk-pad-rec + .sk-voice { margin-left: auto; }
 .sk-smp .sk-keys-head .icon { width: 16px; height: 16px; }
 .sk-smp-lead { margin: -4px 0 0; font-size: 12.5px; line-height: 1.6; color: var(--muted); }
 /* 1・2 は半分ずつ、3・4 は全幅。端をそろえるため列は 2 つに固定（狭い窓では 1 列） */
@@ -203,3 +203,12 @@
 .sk-s-srcrow[hidden] { display: none; }
 .sk-s-src.seg.seg-sm { width: 240px; }
 .sk-s-warn { font-size: 11px; }
+/* 書き込みで進む幅（16 分・8 分・4 分） */
+.sk-steplen { display: inline-flex; align-items: center; gap: 6px; }
+.sk-steplen[hidden] { display: none; }
+.sk-steplen .seg.seg-sm { width: 156px; }
+/* 鍵盤の上の帯: 折り返しても崩れないように。案内の文は 2 行目に回す */
+.sk-pad-head { flex-wrap: wrap; row-gap: 6px; }
+.sk-pad-title, .sk-chip, .sk-steplen .sk-plabel { white-space: nowrap; }
+.sk-pad-rec { order: 9; flex-basis: 100%; margin-left: 0; }
+.sk-pad-rec:empty { display: none; }

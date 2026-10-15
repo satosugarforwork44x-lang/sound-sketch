@@ -6,13 +6,13 @@ export const ACTIONS = [
   { group: "piano", items: [...WHITE_KEYS, "sharp"] },
   { group: "ops", items: ["play", "rec", "mode", "octDown", "octUp", "partDrums", "partBass", "partChords", "partMelody"] },
 ];
-export const KEYMAP_VERSION = "5";
+export const KEYMAP_VERSION = "6";
 
 const BASE = {
   kick: "ArrowDown", snare: "ArrowLeft", hat: "ArrowUp", clap: "ArrowRight",
   w0: "KeyS", w1: "KeyD", w2: "KeyF", w3: "KeyJ", w4: "KeyK", w5: "KeyL", w6: "Semicolon",
   sharp: "ShiftLeft",
-  play: "Enter", rec: "KeyR", mode: "Tab", octDown: "KeyZ", octUp: "KeyX",
+  play: "Enter", rec: "KeyG", mode: "Tab", octDown: "KeyZ", octUp: "KeyX",
   partDrums: "Digit1", partBass: "Digit2", partChords: "Digit3", partMelody: "Digit4",
 };
 
@@ -23,10 +23,12 @@ export const PRESETS = {
 };
 
 // 保存されていた割り当てを読む。並びの考え方を変えた版（_v が違う）のものは捨てて既定にする
+// 5 → 6: 録音を R（遠い）から G（左手の人差し指のとなり）へ。自分で変えていた割り当ては、そのまま残す
 export function normalizeKeymap(saved) {
   const km = { ...BASE };
-  if (saved && typeof saved === "object" && saved._v === KEYMAP_VERSION) {
+  if (saved && typeof saved === "object" && (saved._v === KEYMAP_VERSION || saved._v === "5")) {
     for (const k of Object.keys(BASE)) if (typeof saved[k] === "string") km[k] = saved[k];
+    if (saved._v === "5" && km.rec === "KeyR" && !Object.keys(km).some((a) => a !== "rec" && km[a] === "KeyG")) km.rec = "KeyG";
   }
   km._v = KEYMAP_VERSION;
   return km;
